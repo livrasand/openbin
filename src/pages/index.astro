@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/Layout.astro';
+import UploadForm from '../components/UploadForm';
+---
+
+<Layout>
+  <section class="flex-1 flex flex-col overflow-hidden">
+    <UploadForm client:only="react" />
+  </section>
+</Layout>

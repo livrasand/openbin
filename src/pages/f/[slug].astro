@@ -1,0 +1,178 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { findBySlug } from '../../lib/db';
+import { getPublicURL } from '../../lib/utils';
+import { codeToHtml } from 'shiki';
+import { createHash } from 'node:crypto';
+
+const { slug } = Astro.params;
+if (typeof slug !== 'string' || slug.length === 0) {
+  return new Response('Not found', { status: 404 });
+}
+
+const record = await findBySlug(slug);
+if (!record) {
+  return new Response('Not found', { status: 404 });
+}
+
+const now = new Date();
+const expired = record.expires_at ? new Date(record.expires_at) <= now : false;
+
+let unlocked = !record.password_hash;
+let passwordError = false;
+let password = '';
+
+if (!expired && record.password_hash && Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  password = typeof formData.get('password') === 'string' ? String(formData.get('password')) : '';
+  const hash = createHash('sha256').update(password).digest('hex');
+  if (hash === record.password_hash) {
+    unlocked = true;
+  } else {
+    passwordError = true;
+  }
+}
+
+const directUrl = `https://ipfs.filebase.io/ipfs/${record.cid}`;
+let code = '';
+let html = '';
+
+if (!expired && unlocked) {
+  try {
+    const response = await fetch(directUrl);
+    if (response.ok) {
+      code = await response.text();
+    }
+  } catch {
+    code = '';
+  }
+
+  const ext = record.filename.split('.').pop()?.toLowerCase() || 'text';
+  try {
+    html = await codeToHtml(code, { lang: ext, theme: 'github-dark' });
+  } catch {
+    html = await codeToHtml(code, { lang: 'text', theme: 'github-dark' });
+  }
+}
+
+const base = getPublicURL(Astro.request);
+const publicUrl = `${base}/f/${record.slug}`;
+const rawUrl = `${base}/raw/${record.slug}`;
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+function formatExpiry(value: string): string {
+  const date = new Date(value);
+  return `Expires on ${date.toLocaleString('en-US')}`;
+}
+---
+
+<Layout title={`${record.filename} · openbin`}>
+  <section class="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden p-4 sm:p-6">
+    <header class="flex items-center justify-between gap-4 shrink-0 border border-surface-light bg-surface px-4 py-3 shadow-sm">
+      <div class="flex min-w-0 items-center gap-3">
+        <a href="/">
+          <img src="/favicon.svg" alt="" class="h-7 w-7 shrink-0" />
+        </a>
+        <div class="min-w-0">
+          <p class="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Openbin</p>
+          <h1 class="truncate text-sm font-medium text-main">{record.filename}</h1>
+          <p class="text-xs text-muted">
+            {formatBytes(Number(record.size))} · {record.mime}
+            {record.author && ` · by ${record.author}`}
+            {expired ? ' · expired' : record.expires_at ? ` · ${formatExpiry(record.expires_at)}` : ''}
+          </p>
+        </div>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        {unlocked && (
+          <>
+            <button
+              type="button"
+              data-url={publicUrl}
+              class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+            >
+              Copy link
+            </button>
+            <a
+              href={rawUrl}
+              class="h-8 border border-surface-light bg-surface px-3 py-2 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+            >
+              Raw
+            </a>
+            <a
+              href={rawUrl}
+              download={record.filename}
+              class="h-8 border border-surface-light bg-surface px-3 py-2 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+            >
+              Download
+            </a>
+            <a
+              href={`/?fork=${record.slug}`}
+              class="h-8 border border-surface-light bg-surface px-3 py-2 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+            >
+              Fork
+            </a>
+          </>
+        )}
+      </div>
+    </header>
+
+    <div class="flex-1 min-h-0 overflow-auto bg-background shadow-sm">
+      {expired ? (
+        <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+          <div class="flex h-10 w-10 items-center justify-center border border-surface-light bg-surface text-muted">!</div>
+          <p class="text-sm font-medium text-main">This file has expired</p>
+          <p class="text-xs text-muted">The content is no longer available.</p>
+        </div>
+      ) : !unlocked ? (
+        <form method="POST" class="flex h-full flex-col items-center justify-center gap-4 p-6">
+          <div class="flex max-w-sm flex-col items-center gap-2 text-center">
+            <div class="flex h-10 w-10 items-center justify-center border border-secondary/30 bg-secondary/10 text-secondary">×</div>
+            <h2 class="text-base font-medium text-main">This file is protected</h2>
+            <p class="text-xs text-muted">Enter the password to view the content.</p>
+          </div>
+          {passwordError && <p class="border-l-2 border-red-400 px-2 text-xs text-red-400">Incorrect password</p>}
+          <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            value={password}
+            class="h-8 w-full max-w-sm border border-surface-light bg-surface px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+          />
+          <button
+            type="submit"
+            class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+          >
+            Unlock
+          </button>
+        </form>
+      ) : html ? (
+        <div class="min-h-full p-4 sm:p-6" set:html={html} />
+      ) : (
+        <div class="p-6 text-center text-muted">Could not load the content.</div>
+      )}
+    </div>
+  </section>
+</Layout>
+
+<script>
+  const button = document.querySelector('button[data-url]');
+  if (button) {
+    button.addEventListener('click', async () => {
+      const url = button.getAttribute('data-url');
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        // ignore
+      }
+    });
+  }
+</script>

@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --zen-paper: #f2f0e3;
+  --zen-dark: #2e2e2e;
+  --zen-muted: #0000000d;
+  --zen-subtle: #0000000d;
+
+  --color-background: var(--zen-paper);
+  --color-surface: var(--zen-muted);
+  --color-surface-light: var(--zen-subtle);
+  --color-muted: color-mix(in srgb, var(--zen-dark) 60%, transparent);
+  --color-main: var(--zen-dark);
+}
+
+:root[data-theme="dark"] {
+  --zen-paper: #1f1f1f;
+  --zen-dark: #d1cfc0;
+  --zen-muted: #ffffff0d;
+  --zen-subtle: #ffffff1a;
+
+  --color-background: var(--zen-paper);
+  --color-surface: var(--zen-muted);
+  --color-surface-light: var(--zen-subtle);
+  --color-muted: color-mix(in srgb, var(--zen-dark) 60%, transparent);
+  --color-main: var(--zen-dark);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-light) var(--color-background);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-light);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f76f53;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.rainbow-editor::selection {
+  background: rgba(247, 111, 83, 0.35);
+  color: transparent;
+}
+
+.shiki,
+.shiki-fallback {
+  margin: 0;
+  padding: 0;
+  tab-size: 2;
+  -moz-tab-size: 2;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.shiki code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
