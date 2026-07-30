@@ -19,7 +19,8 @@ export function getPublicURL(request: Request): string {
   const isLocalhost = host.startsWith('localhost:') || host.startsWith('127.0.0.1:');
   const envUrl = process.env.PUBLIC_APP_URL;
   if (envUrl && !isLocalhost) return envUrl.replace(/\/$/, '');
-  const protocol = request.headers.get('x-forwarded-proto') ?? 'https';
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const protocol = isLocalhost ? 'http' : (forwardedProto ?? 'https');
   return `${protocol}://${host}`;
 }
 

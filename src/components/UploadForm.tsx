@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { FormEvent, ChangeEvent, MouseEvent } from 'react';
 import { nanoid } from 'nanoid';
-import { Plus, X, AlertCircle, Copy, Check, ExternalLink, RefreshCw, ListTree, MessageSquarePlus } from 'lucide-react';
+import { Plus, X, AlertCircle, Copy, Check, ChevronDown, ExternalLink, RefreshCw, ListTree, MessageSquarePlus } from 'lucide-react';
 import { useShikiHighlighter } from 'react-shiki';
 
 interface UploadResult {
@@ -12,6 +12,7 @@ interface UploadResult {
   size: number;
   url: string;
   directUrl: string;
+  authorToken?: string;
 }
 
 interface Tab {
@@ -38,12 +39,6 @@ const TODO_COLORS: Record<string, string> = {
   TODO: 'rgba(255,255,64,0.25)',
   FIXME: 'rgba(255,80,80,0.35)',
   BUG: 'rgba(255,140,0,0.35)',
-};
-
-const TODO_TEXT_COLORS: Record<string, string> = {
-  TODO: '#0b0f19',
-  FIXME: '#0b0f19',
-  BUG: '#0b0f19',
 };
 
 function formatBytes(bytes: number): string {
@@ -291,6 +286,10 @@ function detectCodeLanguage(code: string): string | null {
 
 const EXPIRY_OPTIONS = [
   { label: 'Never', value: 0 },
+  { label: 'Being viewed', value: -1 },
+  { label: '5 minutos', value: 300 },
+  { label: '15 minutos', value: 900 },
+  { label: '30 minutos', value: 1800 },
   { label: '1 hour', value: 3600 },
   { label: '6 hours', value: 21600 },
   { label: '12 hours', value: 43200 },
@@ -509,15 +508,60 @@ export default function CodeEditor() {
   const [password, setPassword] = useState('');
   const [expiresIn, setExpiresIn] = useState('0');
   const [publishPublic, setPublishPublic] = useState(false);
+  const [publishMenuOpen, setPublishMenuOpen] = useState(false);
+  const [publishMenuPosition, setPublishMenuPosition] = useState<{ right: number; bottom: number } | null>(null);
   const [showTodos, setShowTodos] = useState(true);
   const [newTodoTag, setNewTodoTag] = useState('TODO');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [detected, setDetected] = useState<{ language: string; extension: string; tabId: string } | null>(null);
   const [forkFromUrl, setForkFromUrl] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editSlug, setEditSlug] = useState<string | null>(null);
+  const [editToken, setEditToken] = useState<string | null>(null);
+  const [forkedFromSlug, setForkedFromSlug] = useState<string | null>(null);
+  const [curator, setCurator] = useState<{ username: string; karma: number; level: number } | null>(null);
+  const [cdnFiles, setCdnFiles] = useState<File[]>([]);
+  const [tabMenuOpen, setTabMenuOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const tabMenuRef = useRef<HTMLDivElement>(null);
+  const tabMenuButtonRef = useRef<HTMLButtonElement>(null);
   const overlayRef = useRef<HTMLPreElement>(null);
   const shikiRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const publishMenuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const gutterRef = useRef<HTMLPreElement>(null);
+  const publishPublicRef = useRef(publishPublic);
+
+  useEffect(() => {
+    publishPublicRef.current = publishPublic;
+  }, [publishPublic]);
+
+  useEffect(() => {
+    if (!publishMenuOpen) return;
+    const handleClick = (e: Event) => {
+      const target = e.target as Node;
+      if (publishMenuRef.current && publishMenuRef.current.contains(target)) return;
+      if (menuRef.current && menuRef.current.contains(target)) return;
+      setPublishMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [publishMenuOpen]);
+
+  useEffect(() => {
+    if (!tabMenuOpen) return;
+    const handleClick = (e: Event) => {
+      const target = e.target as Node;
+      if (tabMenuRef.current && tabMenuRef.current.contains(target)) return;
+      if (tabMenuButtonRef.current && tabMenuButtonRef.current.contains(target)) return;
+      setTabMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [tabMenuOpen]);
 
   useEffect(() => {
     const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
@@ -525,7 +569,19 @@ export default function CodeEditor() {
   }, []);
 
   useEffect(() => {
-    const forkSlug = new URLSearchParams(window.location.search).get('fork');
+    fetch('/api/curators')
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as { username: string; karma: number; level: number };
+      })
+      .then((data) => setCurator(data))
+      .catch(() => setCurator(null));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('edit')) return;
+    const forkSlug = params.get('fork');
     if (!forkSlug) return;
 
     let cancelled = false;
@@ -544,10 +600,49 @@ export default function CodeEditor() {
         setTabs([forkedTab]);
         setActiveId(forkedTab.id);
         setForkFromUrl(metadata.url.replace('/raw/', '/f/'));
+        setForkedFromSlug(forkSlug);
         window.history.replaceState({}, '', '/');
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load the bin');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Could not load the bin');
+          setForkedFromSlug(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const editSlugParam = params.get('edit');
+    const editTokenParam = params.get('token');
+    if (!editSlugParam || !editTokenParam) return;
+
+    let cancelled = false;
+    fetch(`/api/files/${encodeURIComponent(editSlugParam)}?token=${encodeURIComponent(editTokenParam)}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load the bin for editing');
+        return (await response.json()) as { filename: string; code: string; author: string | null };
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const tab = createTab(data.filename, data.code);
+        setTabs([tab]);
+        setActiveId(tab.id);
+        setAuthor(data.author || '');
+        setIsEditing(true);
+        setEditSlug(editSlugParam);
+        setEditToken(editTokenParam);
+        setResults([]);
+        setError(null);
+        setForkFromUrl(null);
+        setForkedFromSlug(null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load the bin for editing');
       });
 
     return () => {
@@ -564,6 +659,7 @@ export default function CodeEditor() {
     const textarea = textareaRef.current;
     const overlay = overlayRef.current;
     const shiki = shikiRef.current;
+    const gutter = gutterRef.current;
     if (!textarea) return;
     if (overlay) {
       overlay.scrollTop = textarea.scrollTop;
@@ -573,12 +669,20 @@ export default function CodeEditor() {
       shiki.scrollTop = textarea.scrollTop;
       shiki.scrollLeft = textarea.scrollLeft;
     }
+    if (gutter) {
+      gutter.scrollTop = textarea.scrollTop;
+    }
   }, []);
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.id === activeId) ?? tabs[0],
     [tabs, activeId]
   );
+
+  const lineNumbers = useMemo(() => {
+    const count = Math.max(1, activeTab.code.split('\n').length);
+    return Array.from({ length: count }, (_, i) => i + 1).join('\n');
+  }, [activeTab.code]);
 
   const shikiLanguage = activeTab.language === 'text' ? 'plaintext' : activeTab.language;
   const shikiTheme = theme === 'dark' ? 'github-dark' : 'github-light';
@@ -623,12 +727,24 @@ export default function CodeEditor() {
   }, [detected]);
 
   const addTab = useCallback(() => {
+    if (isEditing) return;
     const newTab = createTab('new', '');
     setTabs((prev) => [...prev, newTab]);
     setActiveId(newTab.id);
     setResults([]);
     setError(null);
-  }, [tabs.length]);
+  }, [tabs.length, isEditing]);
+
+  const handleFileSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setCdnFiles((prev) => [...prev, ...Array.from(files)]);
+    e.target.value = '';
+  }, []);
+
+  const removeCdnFile = useCallback((index: number) => {
+    setCdnFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   const closeTab = useCallback(
     (id: string, event: MouseEvent<HTMLSpanElement>) => {
@@ -748,6 +864,10 @@ export default function CodeEditor() {
     setExpiresIn('0');
     setPublishPublic(false);
     setForkFromUrl(null);
+    setIsEditing(false);
+    setEditSlug(null);
+    setEditToken(null);
+    setForkedFromSlug(null);
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -762,6 +882,13 @@ export default function CodeEditor() {
     setPassword(generatePassphrase());
   }, []);
 
+  const handlePublishOption = (value: boolean) => {
+    publishPublicRef.current = value;
+    setPublishPublic(value);
+    setPublishMenuOpen(false);
+    formRef.current?.requestSubmit();
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsUploading(true);
@@ -769,16 +896,46 @@ export default function CodeEditor() {
     setResults([]);
     const newResults: UploadResult[] = [];
 
+    if (forkedFromSlug && !curator) {
+      throw new Error('Login is required to fork a bin');
+    }
+
     try {
       for (const tab of tabs) {
         if (!tab.code.trim()) continue;
         const file = new File([tab.code], tab.filename);
+
+        if (isEditing && editSlug && editToken) {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('author', author);
+          formData.append('author_token', editToken);
+          formData.append('language', tab.language);
+
+          const response = await fetch(`/api/files/${encodeURIComponent(editSlug)}`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = (await response.json()) as UploadResult | { error: string };
+
+          if (!response.ok) {
+            throw new Error('error' in data ? data.error : 'Edit error');
+          }
+
+          newResults.push({ ...(data as UploadResult), authorToken: editToken });
+          continue;
+        }
+
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('author', author);
-        formData.append('password', publishPublic ? '' : password);
+        formData.append('password', publishPublicRef.current ? '' : password);
         formData.append('expires_in', expiresIn);
-        formData.append('is_public', String(publishPublic));
+        formData.append('is_public', String(publishPublicRef.current));
+        formData.append('language', tab.language);
+        if (forkedFromSlug) {
+          formData.append('forked_from', forkedFromSlug);
+        }
 
         const response = await fetch('/api/upload', {
           method: 'POST',
@@ -794,6 +951,31 @@ export default function CodeEditor() {
         newResults.push(data as UploadResult);
       }
 
+      if (!isEditing && cdnFiles.length > 0) {
+        for (const file of cdnFiles) {
+          const fileFormData = new FormData();
+          fileFormData.append('file', file);
+          fileFormData.append('password', publishPublicRef.current ? '' : password);
+          fileFormData.append('expires_in', expiresIn);
+          fileFormData.append('is_public', String(publishPublicRef.current));
+          fileFormData.append('language', detectLanguage(file.name));
+
+          const fileResponse = await fetch('/api/upload', {
+            method: 'POST',
+            body: fileFormData,
+          });
+
+          const fileData = (await fileResponse.json()) as UploadResult | { error: string };
+
+          if (!fileResponse.ok) {
+            throw new Error('error' in fileData ? fileData.error : 'Upload error');
+          }
+
+          newResults.push(fileData as UploadResult);
+        }
+        setCdnFiles([]);
+      }
+
       setResults(newResults);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unexpected error');
@@ -804,7 +986,7 @@ export default function CodeEditor() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden gap-3">
-      <div className="flex items-center gap-2 overflow-x-auto shrink-0">
+      <div className="flex items-center overflow-x-auto shrink-0">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
           return (
@@ -829,14 +1011,52 @@ export default function CodeEditor() {
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={addTab}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary hover:text-secondary transition"
-          title="New tab"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            ref={tabMenuButtonRef}
+            onClick={() => setTabMenuOpen((open) => !open)}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary hover:text-secondary transition"
+            title="New tab"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          {tabMenuOpen && (
+            <div
+              ref={tabMenuRef}
+              className="absolute top-full left-0 mt-1 w-48 rounded border border-surface-light bg-surface shadow-lg z-50 py-1"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  addTab();
+                  setTabMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
+              >
+                <span>New blank tab</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  fileInputRef.current?.click();
+                  setTabMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
+              >
+                <span>Upload file</span>
+              </button>
+            </div>
+          )}
+        </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          className="hidden"
+          accept="*/*"
+          multiple
+        />
         <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
@@ -882,6 +1102,25 @@ export default function CodeEditor() {
         </div>
       </div>
 
+      {cdnFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 shrink-0 px-1">
+          {cdnFiles.map((file, index) => (
+            <div key={`${file.name}-${index}`} className="flex items-center gap-1.5 px-2 py-1 text-xs text-main bg-surface border border-surface-light rounded">
+              <span className="truncate max-w-[120px]">{file.name}</span>
+              <span className="text-muted">{formatBytes(file.size)}</span>
+              <button
+                type="button"
+                onClick={() => removeCdnFile(index)}
+                className="text-muted hover:text-red-400 transition"
+                aria-label="Remove"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {showTodos && allTodos.length > 0 && (
         <div className="shrink-1 max-h-40 overflow-y-auto rounded-lg border border-surface-light bg-surface p-2 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-sm font-medium text-main px-1">
@@ -918,7 +1157,7 @@ export default function CodeEditor() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 gap-2">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 gap-2">
         {forkFromUrl && (
           <div className="flex shrink-0 items-center gap-2 border border-surface-light border-l-2 border-l-secondary bg-surface px-3 py-2 text-xs text-muted">
             <span className="font-medium text-main">Fork from:</span>
@@ -933,9 +1172,16 @@ export default function CodeEditor() {
           </div>
         )}
         <div className="relative flex flex-col flex-1 min-h-1 rounded-lg bg-background overflow-hidden">
+          <pre
+            ref={gutterRef}
+            aria-hidden="true"
+            className="absolute left-0 top-0 bottom-0 w-6 overflow-hidden m-0 py-4 pr-2 text-right font-mono text-sm leading-5 text-muted bg-transparent border-r border-surface no-scrollbar pointer-events-none select-none"
+          >
+            {lineNumbers}
+          </pre>
           <div
             ref={shikiRef}
-            className="absolute inset-0 overflow-auto whitespace-pre p-4 font-mono text-sm leading-5 text-main"
+            className="absolute inset-0 overflow-auto whitespace-pre pl-12 pr-4 py-4 font-mono text-sm leading-5 text-main"
             dangerouslySetInnerHTML={{
               __html:
                 shikiHtml || `<pre class="shiki-fallback" style="margin:0;padding:0">${escapeHtml(activeTab.code)}</pre>`,
@@ -944,7 +1190,7 @@ export default function CodeEditor() {
           <pre
             ref={overlayRef}
             aria-hidden="true"
-            className="absolute inset-0 m-0 overflow-auto whitespace-pre p-4 font-mono text-sm leading-5 text-transparent no-scrollbar pointer-events-none"
+            className="absolute inset-0 m-0 overflow-auto whitespace-pre pl-12 pr-4 py-4 font-mono text-sm leading-5 text-transparent no-scrollbar pointer-events-none"
             style={{ tabSize: INDENT_TAB_SIZE, MozTabSize: INDENT_TAB_SIZE }}
             dangerouslySetInnerHTML={{ __html: renderEditorOverlay(activeTab.code, showTodos) }}
           />
@@ -954,7 +1200,7 @@ export default function CodeEditor() {
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleCodeChange(activeTab.id, e.target.value)}
             onScroll={handleScroll}
             spellCheck={false}
-            className="rainbow-editor absolute inset-0 h-full w-full resize-none overflow-auto whitespace-pre bg-transparent p-4 font-mono text-sm leading-5 text-transparent caret-[var(--color-main)] focus:outline-none"
+            className="rainbow-editor absolute inset-0 h-full w-full resize-none overflow-auto whitespace-pre bg-transparent pl-12 pr-4 py-4 font-mono text-sm leading-5 text-transparent caret-[var(--color-main)] focus:outline-none"
             style={{ tabSize: INDENT_TAB_SIZE, MozTabSize: INDENT_TAB_SIZE }}
           />
         </div>
@@ -980,6 +1226,19 @@ export default function CodeEditor() {
                   copied={copiedValue === result.url}
                   onCopy={() => copyToClipboard(result.url)}
                 />
+                {result.authorToken && (
+                  <URLBox
+                    label="Manage link"
+                    value={`${result.url}?token=${result.authorToken}`}
+                    copied={copiedValue === `${result.url}?token=${result.authorToken}`}
+                    onCopy={() => copyToClipboard(`${result.url}?token=${result.authorToken}`)}
+                  />
+                )}
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(result.url)}`}
+                  alt="QR code to share"
+                  className="h-32 w-32 border border-surface-light"
+                />
               </div>
             ))}
           </div>
@@ -993,13 +1252,13 @@ export default function CodeEditor() {
               onChange={(e) => handleFilenameChange(activeTab.id, e.target.value)}
               placeholder="Main"
               title="Filename"
-              className="h-7 w-24 bg-surface border border-surface-light rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary"
+              className="h-7 w-24 bg-surface rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary"
             />
             <select
               value={activeTab.language}
               onChange={(e) => handleLanguageChange(activeTab.id, e.target.value)}
               title="Language"
-              className="h-7 w-24 bg-surface border border-surface-light rounded px-1 text-xs text-main focus:outline-none focus:border-secondary"
+              className="h-7 w-24 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary"
             >
               {['text', ...COMMON_LANGUAGES].map((lang) => (
                 <option key={lang} value={lang}>
@@ -1012,36 +1271,24 @@ export default function CodeEditor() {
           <div className="w-px h-4 bg-surface-light shrink-0" />
 
           <div className="flex items-center gap-1 shrink-0">
-            <label className="flex h-7 items-center gap-1.5 rounded border border-surface-light bg-surface px-2 text-xs text-muted transition hover:bg-surface-light" title="Show this bin in Discover">
-              <input
-                type="checkbox"
-                checked={publishPublic}
-                onChange={(e) => setPublishPublic(e.target.checked)}
-                className="h-3.5 w-3.5 accent-primary"
-              />
-              <span>Public</span>
-            </label>
-            <input
-              type="text"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="author"
-              title="Author"
-              className="h-7 w-20 bg-surface border border-surface-light rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary"
-            />
+            <span className="h-7 flex items-center px-2 text-xs text-muted" title="Author">
+              {curator ? `@${curator.username}` : 'anonymous'}
+            </span>
             <div className="flex items-center gap-1">
               <input
                 type="text"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isEditing}
                 placeholder="password"
                 title="Password"
-                className="h-7 w-24 bg-surface border border-surface-light rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary"
+                className="h-7 w-24 bg-surface rounded ounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={handleGeneratePassword}
-                className="h-7 w-7 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition"
+                disabled={isEditing}
+                className="h-7 w-7 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition disabled:opacity-50"
                 title="Generate password"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -1050,8 +1297,9 @@ export default function CodeEditor() {
             <select
               value={expiresIn}
               onChange={(e) => setExpiresIn(e.target.value)}
+              disabled={isEditing}
               title="Expiration"
-              className="h-7 w-24 bg-surface border border-surface-light rounded px-1 text-xs text-main focus:outline-none focus:border-secondary"
+              className="h-7 w-32 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary disabled:opacity-50"
             >
               {EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={String(option.value)}>
@@ -1065,7 +1313,7 @@ export default function CodeEditor() {
 
           <div className="flex items-center gap-1 ml-auto shrink-0">
             <label
-              className="flex items-center gap-1.5 h-7 px-2 rounded border border-surface-light bg-surface hover:bg-surface-light text-xs text-muted cursor-pointer select-none transition"
+              className="flex items-center gap-1.5 h-7 px-2 rounded bg-surface hover:bg-surface-light text-xs text-muted cursor-pointer select-none transition"
               title="Show/hide TODOs"
             >
               <input
@@ -1082,7 +1330,7 @@ export default function CodeEditor() {
               value={newTodoTag}
               onChange={(e) => setNewTodoTag(e.target.value)}
               title="Comment tag"
-              className="h-7 w-16 bg-surface border border-surface-light rounded px-1 text-xs text-main focus:outline-none focus:border-secondary"
+              className="h-7 w-16 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary"
             >
               {TODO_TAGS.map((tag) => (
                 <option key={tag} value={tag}>
@@ -1100,13 +1348,60 @@ export default function CodeEditor() {
               <MessageSquarePlus className="h-3.5 w-3.5" />
             </button>
 
-            <button
-              type="submit"
-              disabled={isUploading}
-              className="h-7 px-3 bg-primary text-white text-xs font-medium rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isUploading ? 'Uploading...' : 'Open bin!'}
-            </button>
+            <div className="relative flex items-stretch" ref={publishMenuRef}>
+              <button
+                type="submit"
+                disabled={isUploading}
+                className="h-7 px-3 bg-primary text-white text-xs font-medium rounded-l hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isUploading ? (isEditing ? 'Saving...' : 'Uploading...') : isEditing ? 'Save changes' : publishPublic ? 'Open public bin' : 'Open secret bin'}
+              </button>
+              <button
+                type="button"
+                disabled={isEditing || isUploading}
+                onClick={() => {
+                  setPublishMenuOpen((open) => {
+                    if (!open && publishMenuRef.current) {
+                      const rect = publishMenuRef.current.getBoundingClientRect();
+                      setPublishMenuPosition({
+                        right: window.innerWidth - rect.right,
+                        bottom: window.innerHeight - rect.top + 4,
+                      });
+                    }
+                    return !open;
+                  });
+                }}
+                className="h-7 px-1.5 bg-primary text-white rounded-r border-l border-white/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                aria-label="Publish options"
+                aria-expanded={publishMenuOpen}
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+              {publishMenuOpen && publishMenuPosition && (
+                <div
+                  ref={menuRef}
+                  className="fixed w-48 rounded bg-surface border border-surface-light shadow-lg z-50 py-1"
+                  style={{ right: publishMenuPosition.right, bottom: publishMenuPosition.bottom }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handlePublishOption(false)}
+                    className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
+                  >
+                    <span>Open secret bin</span>
+                    {!publishPublic && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePublishOption(true)}
+                    className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
+                  >
+                    <span>Open public bin</span>
+                    {publishPublic && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                </div>
+              )}
+            </div>
             {results.length > 0 && (
               <button
                 type="button"

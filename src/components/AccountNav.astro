@@ -1,0 +1,38 @@
+---
+import { getCurrentCurator } from '../lib/auth';
+
+const curator = await getCurrentCurator(Astro.cookies);
+---
+
+<div class="flex items-center gap-2">
+  <a
+    href="/discover"
+    class="h-8 border border-surface-light bg-surface px-3 py-2 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+  >
+    Discover
+  </a>
+  {curator ? (
+    <a
+      href={`/u/${curator.username}`}
+      class="flex h-8 items-center gap-2 border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+    >
+      <span>@{curator.username}</span>
+      <span class="text-[10px] text-muted">L{curator.level}</span>
+    </a>
+  ) : (
+    <>
+      <a
+        href="/create-account"
+        class="h-8 border border-primary bg-primary px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+      >
+        Create account
+      </a>
+      <a
+        href="/login"
+        class="h-8 border border-surface-light bg-surface px-3 py-2 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+      >
+        Login
+      </a>
+    </>
+  )}
+</div>

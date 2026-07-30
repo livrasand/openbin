@@ -1,9 +1,11 @@
 import type { APIContext } from 'astro';
 import { createHash } from 'node:crypto';
 import mime from 'mime';
-import { customAlphabet } from 'nanoid';
+import { nanoid, customAlphabet } from 'nanoid';
 import { findByHash, findBySlug, insertFile } from '../../lib/db';
 import { uploadToFilebase } from '../../lib/filebase';
+import { detectLanguage } from '../../lib/language';
+import { getCurrentCurator } from '../../lib/auth';
 import { checkUploadRateLimit } from '../../lib/ratelimit';
 import {
   getClientIP,
@@ -34,9 +36,14 @@ interface UploadResponse {
   size: number;
   url: string;
   directUrl: string;
+  authorToken?: string;
 }
 
-function buildResponse(record: Pick<FileRecord, 'slug' | 'cid' | 'filename' | 'mime' | 'size'>, request: Request): UploadResponse {
+function buildResponse(
+  record: Pick<FileRecord, 'slug' | 'cid' | 'filename' | 'mime' | 'size'>,
+  request: Request,
+  authorToken?: string
+): UploadResponse {
   const base = getPublicURL(request);
   return {
     slug: record.slug,
@@ -46,6 +53,7 @@ function buildResponse(record: Pick<FileRecord, 'slug' | 'cid' | 'filename' | 'm
     size: Number(record.size),
     url: `${base}/f/${record.slug}`,
     directUrl: `https://ipfs.filebase.io/ipfs/${record.cid}`,
+    ...(authorToken ? { authorToken } : {}),
   };
 }
 
@@ -74,13 +82,26 @@ export async function POST(context: APIContext): Promise<Response> {
 
     const formData = await request.formData();
     const file = formData.get('file');
-    const author = typeof formData.get('author') === 'string' ? (formData.get('author') as string).trim() || null : null;
     const password = typeof formData.get('password') === 'string' ? (formData.get('password') as string).trim() : '';
     const expiresIn = typeof formData.get('expires_in') === 'string' ? (formData.get('expires_in') as string).trim() : '0';
     const isPublic = formData.get('is_public') === 'true';
+    const forkedFrom = typeof formData.get('forked_from') === 'string' ? (formData.get('forked_from') as string).trim() || null : null;
+    const curator = await getCurrentCurator(context.cookies);
 
-    const passwordHash = isPublic ? null : password ? hashPassword(password) : null;
-    const expiresAt = parseExpiresAt(expiresIn);
+    if (!isPublic && !password) {
+      return jsonResponse({ error: 'A password is required for a private bin' }, 400);
+    }
+
+    if (forkedFrom && !curator) {
+      return jsonResponse({ error: 'Login required to fork' }, 401);
+    }
+
+    const passwordHash = isPublic ? null : hashPassword(password);
+    const viewOnce = expiresIn === '-1';
+    const expiresAt = viewOnce ? null : parseExpiresAt(expiresIn);
+
+    const authorToken = nanoid(32);
+    const authorTokenHash = createHash('sha256').update(authorToken).digest('hex');
 
     if (!(file instanceof File) || file.size === 0) {
       return jsonResponse({ error: 'No valid file was provided' }, 400);
@@ -98,19 +119,26 @@ export async function POST(context: APIContext): Promise<Response> {
     const buffer = Buffer.from(arrayBuffer);
     const hash = createHash('sha256').update(buffer).digest('hex');
 
-    const existing = await findByHash(hash);
-    if (existing) {
-      return jsonResponse(buildResponse(existing, request), 200, {
-        headers: {
-          'X-RateLimit-Limit': String(rate.limit),
-          'X-RateLimit-Remaining': String(rate.remaining),
-        },
-      });
+    if (isPublic && !forkedFrom) {
+      const existing = await findByHash(hash);
+      if (existing) {
+        return jsonResponse(buildResponse(existing, request), 200, {
+          headers: {
+            'X-RateLimit-Limit': String(rate.limit),
+            'X-RateLimit-Remaining': String(rate.remaining),
+          },
+        });
+      }
     }
 
     const contentType = file.type || mime.getType(file.name) || 'application/octet-stream';
     const cid = await uploadToFilebase(hash, buffer, contentType);
     const slug = await generateUniqueSlug();
+
+    const language =
+      typeof formData.get('language') === 'string'
+        ? (formData.get('language') as string).trim() || detectLanguage(file.name || 'unknown')
+        : detectLanguage(file.name || 'unknown');
 
     const record = await insertFile({
       slug,
@@ -119,12 +147,20 @@ export async function POST(context: APIContext): Promise<Response> {
       filename: file.name || 'unknown',
       mime: contentType,
       size: file.size,
-      author,
+      author: curator ? curator.username : null,
       password_hash: passwordHash,
       expires_at: expiresAt,
+      view_once: viewOnce,
+      author_token: authorTokenHash,
+      forked_from: forkedFrom,
+      curator_id: curator ? curator.id : null,
+      language,
+      score: 0,
+      report_count: 0,
+      hidden: false,
     });
 
-    return jsonResponse(buildResponse(record, request), 200, {
+    return jsonResponse(buildResponse(record, request, authorToken), 200, {
       headers: {
         'X-RateLimit-Limit': String(rate.limit),
         'X-RateLimit-Remaining': String(rate.remaining),

@@ -1,0 +1,80 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Karma · openbin">
+  <section class="flex flex-1 flex-col gap-4 overflow-hidden p-4 sm:p-6">
+    <header class="flex shrink-0 flex-col border border-surface-light bg-surface shadow-sm">
+      <div class="flex items-center justify-between gap-4 px-4 py-3">
+        <div class="flex min-w-0 items-center gap-3">
+          <a href="/">
+            <img src="/favicon.svg" alt="" class="h-7 w-7 shrink-0" />
+          </a>
+          <div class="min-w-0">
+            <p class="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Openbin</p>
+            <h1 class="text-sm font-medium text-main">Karma</h1>
+            <p class="text-xs text-muted">How reputation works</p>
+          </div>
+        </div>
+        <a href="/" class="h-8 border border-primary bg-primary px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-primary/90">
+          Create bin
+        </a>
+      </div>
+    </header>
+
+    <main class="min-h-0 flex-1 overflow-auto bg-background shadow-sm sm:p-6">
+      <div class="mx-auto max-w-2xl border border-surface-light bg-surface p-4 sm:p-6">
+        <h2 class="mb-4 text-sm font-medium text-main">Curator karma and levels</h2>
+        <p class="mb-6 text-xs text-muted">
+          Karma is the reputation score each curator builds by sharing useful bins and engaging with the community. It can go up and down based on how others receive your content.
+        </p>
+
+        <div class="mb-6 flex flex-col gap-4">
+          <div class="flex items-start gap-3 border border-surface-light bg-background p-4">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center border border-primary/30 bg-primary/10 text-xs font-medium text-primary">+</div>
+            <div>
+              <h3 class="text-xs font-medium text-main">Gain karma</h3>
+              <p class="text-[11px] text-muted">
+                Upvotes on your public bins add <strong>+1</strong> karma. Consistently helpful content increases your visibility and trust.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3 border border-surface-light bg-background p-4">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center border border-red-500/30 bg-red-500/10 text-xs font-medium text-red-400">−</div>
+            <div>
+              <h3 class="text-xs font-medium text-main">Lose karma</h3>
+              <p class="text-[11px] text-muted">
+                Downvotes on your bins remove <strong>1</strong> karma point. When a bin or comment reaches <strong>6 reports</strong>, it is hidden and your karma drops by <strong>6 points</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3 border border-surface-light bg-background p-4">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center border border-primary/30 bg-primary/10 text-xs font-medium text-primary">L</div>
+            <div>
+              <h3 class="text-xs font-medium text-main">Levels</h3>
+              <p class="text-[11px] text-muted">
+                Your level grows automatically as your karma crosses multiples of 10. Higher levels show longer community participation and trust.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3 border border-surface-light bg-background p-4">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center border border-secondary/30 bg-secondary/10 text-xs font-medium text-secondary">0</div>
+            <div>
+              <h3 class="text-xs font-medium text-main">Minimum karma</h3>
+              <p class="text-[11px] text-muted">
+                Karma can never be negative. If a penalty would take you below <strong>0</strong>, it stops at <strong>0</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-[10px] text-muted">
+          Karma is meant to reward honest, useful participation. Keep it healthy by publishing meaningful bins and respecting the community guidelines.
+        </p>
+      </div>
+    </main>
+  </section>
+</Layout>

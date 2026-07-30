@@ -1,0 +1,83 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Login · openbin">
+  <section class="flex min-h-screen flex-col items-center justify-center p-4 sm:p-6">
+    <div class="w-full max-w-sm border border-surface-light bg-surface p-6 shadow-sm">
+      <div class="mb-6 flex items-center gap-3">
+        <a href="/">
+          <img src="/favicon.svg" alt="" class="h-8 w-8" />
+        </a>
+        <div>
+          <h1 class="text-sm font-medium text-main">Log in</h1>
+          <p class="text-xs text-muted">Enter your 16-digit Curator code.</p>
+        </div>
+      </div>
+
+      <form id="login-form" class="flex flex-col gap-3">
+        <input
+          type="text"
+          name="code"
+          id="code"
+          inputmode="numeric"
+          pattern="\\d{16}"
+          maxlength="16"
+          placeholder="1234567890123456"
+          required
+          class="h-10 w-full border border-surface-light bg-background px-3 font-mono text-sm text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <button
+          type="submit"
+          id="submit-btn"
+          class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Log in
+        </button>
+        <p id="error" class="hidden text-xs text-red-400"></p>
+      </form>
+
+      <p class="mt-4 text-center text-[10px] text-muted">
+        No account? <a href="/create-account" class="text-primary hover:underline">Create one</a>
+      </p>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  const form = document.getElementById('login-form');
+  const errorEl = document.getElementById('error');
+  const submitBtn = document.getElementById('submit-btn');
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!submitBtn) return;
+      submitBtn.setAttribute('disabled', 'true');
+      if (errorEl) errorEl.classList.add('hidden');
+
+      const formData = new FormData(form as HTMLFormElement);
+      const code = String(formData.get('code') || '').trim();
+
+      try {
+        const res = await fetch('/api/curators/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Invalid code');
+        }
+        window.location.href = '/';
+      } catch (err: unknown) {
+        if (errorEl) {
+          errorEl.textContent = err instanceof Error ? err.message : 'Could not log in';
+          errorEl.classList.remove('hidden');
+        }
+      } finally {
+        submitBtn.removeAttribute('disabled');
+      }
+    });
+  }
+</script>

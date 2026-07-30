@@ -1,0 +1,152 @@
+---
+import { getCurrentCurator } from '../lib/auth';
+
+const curator = await getCurrentCurator(Astro.cookies);
+
+function getPrompt(path: string): string {
+  if (path === '/') return 'home';
+  if (path.startsWith('/discover')) return 'discover';
+  if (path.startsWith('/f/')) return 'bin';
+  if (path.startsWith('/u/')) return 'user';
+  if (path.startsWith('/karma')) return 'karma';
+  if (path.startsWith('/reports')) return 'reports';
+  if (path.startsWith('/create-account')) return 'signup';
+  if (path.startsWith('/login')) return 'login';
+  return 'home';
+}
+
+const prompt = getPrompt(Astro.url.pathname);
+
+interface Command {
+  label: string;
+  href: string;
+  shortcut: string;
+  id?: string;
+}
+
+const baseCommands: Command[] = [
+  { label: 'home', href: '/', shortcut: 'cmd+H' },
+  { label: 'discover', href: '/discover', shortcut: 'cmd+D' },
+  { label: 'karma', href: '/karma', shortcut: 'cmd+K' },
+];
+
+const authCommands: Command[] = curator
+  ? []
+  : [
+      { label: 'login', href: '/login', shortcut: 'cmd+L' },
+      { label: 'signup', href: '/create-account', shortcut: 'cmd+S' },
+    ];
+
+const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle theme', href: '#', shortcut: 'cmd', id: 'toggle-theme' }];
+---
+
+<footer class="relative flex h-6 shrink-0 items-center justify-between border-t border-surface-light bg-surface px-3 text-[11px] font-mono text-muted">
+  <button
+    type="button"
+    id="command-trigger"
+    class="flex items-center gap-1 outline-none"
+    aria-haspopup="true"
+  >
+    <span class="text-main">{prompt}</span>
+    <span class="animate-pulse text-primary">_</span>
+  </button>
+
+  <div class="flex items-center gap-2">
+    {curator ? (
+      <>
+        <a href={`/u/${curator.username}`} class="text-primary hover:underline">
+          @{curator.username}
+        </a>
+      </>
+    ) : (
+      <>
+        <span>browsing as guest</span>
+        <a href="/create-account" class="text-primary hover:underline">(signup)</a>
+        <a href="/login" class="text-primary hover:underline">(login)</a>
+      </>
+    )}
+  </div>
+
+  <div
+    id="command-menu"
+    class="absolute bottom-full left-0 mb-1 hidden w-56 border border-surface-light bg-surface shadow-lg"
+  >
+    <ul class="flex flex-col py-1">
+      {commands.map((cmd) => (
+        <li>
+          {cmd.id ? (
+            <button
+              type="button"
+              data-cmd={cmd.id}
+              class="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-main hover:bg-surface-light"
+            >
+              <span>{cmd.label}</span>
+              <span class="text-[10px] text-muted">{cmd.shortcut}</span>
+            </button>
+          ) : (
+            <a
+              href={cmd.href}
+              class="flex items-center justify-between px-3 py-1.5 text-xs text-main hover:bg-surface-light"
+            >
+              <span>{cmd.label}</span>
+              <span class="text-[10px] text-muted">{cmd.shortcut}</span>
+            </a>
+          )}
+        </li>
+      ))}
+      {curator && (
+        <li>
+          <form method="POST" action="/api/curators/logout" class="m-0">
+            <button
+              type="submit"
+              class="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-main hover:bg-surface-light"
+            >
+              <span>logout</span>
+              <span class="text-[10px] text-muted">cmd</span>
+            </button>
+          </form>
+        </li>
+      )}
+    </ul>
+    <div class="flex items-center gap-1 border-t border-surface-light px-3 py-1 text-[10px]">
+      <span class="text-main">{prompt}</span>
+      <span class="animate-pulse text-primary">_</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const trigger = document.getElementById('command-trigger');
+  const menu = document.getElementById('command-menu');
+  const toggleTheme = document.querySelector('[data-cmd="toggle-theme"]');
+
+  if (trigger && menu) {
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!menu.classList.contains('hidden') && !menu.contains(e.target as Node) && e.target !== trigger) {
+        menu.classList.add('hidden');
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        menu.classList.add('hidden');
+      }
+    });
+  }
+
+  if (toggleTheme) {
+    toggleTheme.addEventListener('click', () => {
+      const current = document.documentElement.dataset.theme || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('theme', next);
+      }
+    });
+  }
+</script>

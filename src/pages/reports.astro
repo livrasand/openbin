@@ -1,0 +1,70 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Reports · openbin">
+  <section class="flex flex-1 flex-col gap-4 overflow-hidden p-4 sm:p-6">
+    <header class="flex shrink-0 flex-col border border-surface-light bg-surface shadow-sm">
+      <div class="flex items-center justify-between gap-4 px-4 py-3">
+        <div class="flex min-w-0 items-center gap-3">
+          <a href="/">
+            <img src="/favicon.svg" alt="" class="h-7 w-7 shrink-0" />
+          </a>
+          <div class="min-w-0">
+            <p class="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Openbin</p>
+            <h1 class="text-sm font-medium text-main">Reports</h1>
+            <p class="text-xs text-muted">How moderation works</p>
+          </div>
+        </div>
+        <a href="/" class="h-8 border border-primary bg-primary px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-primary/90">
+          Create bin
+        </a>
+      </div>
+    </header>
+
+    <main class="min-h-0 flex-1 overflow-auto bg-background shadow-sm sm:p-6">
+      <div class="mx-auto max-w-2xl border border-surface-light bg-surface p-4 sm:p-6">
+        <h2 class="mb-4 text-sm font-medium text-main">Reporting bins and comments</h2>
+        <p class="mb-6 text-xs text-muted">
+          Openbin uses a community-driven reporting system to keep public content useful and safe. When you report a bin or a comment, moderators and the system review the report to take action.
+        </p>
+
+        <div class="mb-6 flex flex-col gap-4">
+          <div class="flex items-start gap-3 border border-surface-light bg-background p-4">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center border border-primary/30 bg-primary/10 text-xs font-medium text-primary">1</div>
+            <div>
+              <h3 class="text-xs font-medium text-main">Report</h3>
+              <p class="text-[11px] text-muted">
+                Click <strong>Report</strong> on any public bin or comment. Choose a reason (spam, harassment, off-topic, other) and optionally add details.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3 border border-surface-light bg-background p-4">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center border border-primary/30 bg-primary/10 text-xs font-medium text-primary">2</div>
+            <div>
+              <h3 class="text-xs font-medium text-main">Under observation</h3>
+              <p class="text-[11px] text-muted">
+                Once a bin or comment reaches <strong>3 reports</strong>, it gets a small <span class="inline-flex items-center border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Under observation</span> badge. This warns visitors that the content is being reviewed.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3 border border-surface-light bg-background p-4">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center border border-red-500/30 bg-red-500/10 text-xs font-medium text-red-400">3</div>
+            <div>
+              <h3 class="text-xs font-medium text-main">Hidden</h3>
+              <p class="text-[11px] text-muted">
+                At <strong>6 reports</strong> the bin or comment is automatically hidden from public view and removed from public lists. The author's karma is reduced by <strong>6 points</strong>. Karma never goes below <strong>0</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-[10px] text-muted">
+          Reports are taken seriously. Abuse of the reporting system may result in moderation actions against the reporter.
+        </p>
+      </div>
+    </main>
+  </section>
+</Layout>

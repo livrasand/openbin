@@ -1,0 +1,140 @@
+---
+import type { CommentWithAuthor } from '../lib/db';
+
+interface CommentNode extends CommentWithAuthor {
+  replies: CommentNode[];
+}
+
+interface Props {
+  comment: CommentNode;
+  slug: string;
+  curator: boolean;
+}
+
+const { comment, slug, curator } = Astro.props;
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleString('en-US', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+---
+
+<div class="flex flex-col gap-2 border-l border-surface-light pl-3 py-1">
+  <div class="flex flex-wrap items-center gap-2 text-xs">
+    <a href={`/u/${comment.author}`} class="font-medium text-primary hover:underline">
+      @{comment.author}
+    </a>
+    <span class="text-muted">· L{comment.level}</span>
+    <span class="text-muted">· {formatDate(comment.created_at)}</span>
+    {comment.hidden ? (
+      <span class="inline-flex shrink-0 items-center border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+        Hidden
+      </span>
+    ) : comment.report_count >= 3 ? (
+      <span
+        class="inline-flex shrink-0 items-center border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+        title="This comment is under observation due to reports"
+      >
+        Under observation
+      </span>
+    ) : null}
+  </div>
+  {comment.hidden ? (
+    <p class="text-sm italic text-muted">This comment has been hidden due to reports.</p>
+  ) : (
+    <p class="whitespace-pre-wrap text-sm text-main">{comment.content}</p>
+  )}
+
+  {curator && (
+    <div class="reply-form hidden" data-parent-id={comment.id} data-slug={slug}>
+      <textarea
+        name="content"
+        rows={2}
+        placeholder="Write a reply..."
+        class="w-full border border-surface-light bg-background p-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+      ></textarea>
+      <div class="mt-1 flex gap-2">
+        <button
+          type="button"
+          class="submit-comment h-7 border border-primary bg-primary px-2 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Reply
+        </button>
+        <button
+          type="button"
+          class="cancel-reply h-7 border border-surface-light bg-surface px-2 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+        >
+          Cancel
+        </button>
+      </div>
+      <p class="error-msg mt-1 hidden text-xs text-red-400"></p>
+    </div>
+  )}
+
+  <div class="flex items-center gap-3">
+    {curator && (
+      <button
+        type="button"
+        class="reply-toggle text-left text-xs text-muted hover:text-primary"
+        data-target={`reply-${comment.id}`}
+      >
+        Reply
+      </button>
+    )}
+    {curator && (
+      <button
+        type="button"
+        class="report-toggle text-left text-xs text-muted hover:text-red-400"
+        data-target={`report-${comment.id}`}
+      >
+        Report
+      </button>
+    )}
+  </div>
+
+  {curator && (
+    <div class="report-form hidden mt-2 flex flex-col gap-2" data-comment-id={comment.id}>
+    <select
+      class="report-reason h-7 border border-surface-light bg-surface px-2 text-xs text-main focus:outline-none"
+    >
+      <option value="">Select a reason</option>
+      <option value="spam">Spam</option>
+      <option value="harassment">Harassment</option>
+      <option value="off-topic">Off-topic</option>
+      <option value="other">Other</option>
+    </select>
+    <textarea
+      rows={2}
+      placeholder="Additional details (optional)"
+      class="w-full border border-surface-light bg-background p-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+    ></textarea>
+    <div class="flex gap-2">
+      <button
+        type="button"
+        class="submit-report h-7 border border-red-500/30 bg-red-500/10 px-2 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
+      >
+        Report
+      </button>
+      <button
+        type="button"
+        class="cancel-report h-7 border border-surface-light bg-surface px-2 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+      >
+        Cancel
+      </button>
+    </div>
+    <p class="report-error hidden text-xs text-red-400"></p>
+  </div>
+  )}
+
+  {comment.replies.length > 0 && (
+    <div class="mt-2 flex flex-col gap-3">
+      {comment.replies.map((reply) => (
+        <Astro.self comment={reply} slug={slug} curator={curator} />
+      ))}
+    </div>
+  )}
+</div>

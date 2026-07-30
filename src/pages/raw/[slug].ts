@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { findBySlug } from '../../lib/db';
+import { findBySlug, markViewed } from '../../lib/db';
 import { downloadFromFilebase } from '../../lib/filebase';
 
 export const GET: APIRoute = async ({ params }) => {
@@ -13,6 +13,9 @@ export const GET: APIRoute = async ({ params }) => {
 
   try {
     const body = await downloadFromFilebase(record.sha256);
+    if (record.view_once) {
+      await markViewed(record.slug);
+    }
     return new Response(new Uint8Array(body), {
       headers: {
         'Content-Type': record.mime || 'text/plain; charset=utf-8',

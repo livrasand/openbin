@@ -1,4 +1,4 @@
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 function getS3Client(): S3Client {
   const accessKeyId = process.env.FILEBASE_ACCESS_KEY;
@@ -81,4 +81,10 @@ export async function uploadToFilebase(
   }
 
   return cid;
+}
+
+export async function deleteFromFilebase(hash: string): Promise<void> {
+  const client = getS3Client();
+  const bucket = getBucket();
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: hash }));
 }

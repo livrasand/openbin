@@ -1,40 +1,44 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import Layout from '../../layouts/Layout.astro';
 import {
-  listPublicFiles,
-  listPublicFilesPopular,
-  listPublicFilesTrending,
-  listPublicFilesByLanguage,
-  getDistinctLanguages,
+  findCuratorByUsername,
+  getFollowCounts,
+  getPublicBinsByCurator,
+  countPublicBinsByCurator,
+  isFollowing,
   getVotesByCuratorAndSlugs,
-} from '../lib/db';
-import { getCurrentCurator } from '../lib/auth';
+} from '../../lib/db';
+import { getCurrentCurator } from '../../lib/auth';
 
-const tab = Astro.url.searchParams.get('tab') || 'new';
-const rawLang = Astro.url.searchParams.get('lang') || '';
-
-const languages = await getDistinctLanguages();
-const selectedLang = rawLang || languages[0] || '';
-
-let files;
-if (tab === 'popular') {
-  files = await listPublicFilesPopular(50);
-} else if (tab === 'trending') {
-  files = await listPublicFilesTrending(50);
-} else if (tab === 'language') {
-  files = selectedLang ? await listPublicFilesByLanguage(selectedLang, 50) : await listPublicFiles(50);
-} else {
-  files = await listPublicFiles(50);
+const { username } = Astro.params;
+if (typeof username !== 'string' || username.length === 0) {
+  return new Response('Not found', { status: 404 });
 }
 
-const curator = await getCurrentCurator(Astro.cookies);
-const userVotes = curator ? await getVotesByCuratorAndSlugs(curator.id, files.map((f) => f.slug)) : {};
+const curator = await findCuratorByUsername(username);
+if (!curator) {
+  return new Response('Not found', { status: 404 });
+}
+
+const current = await getCurrentCurator(Astro.cookies);
+const isOwnProfile = current?.id === curator.id;
+const [counts, bins, binCount, following] = await Promise.all([
+  getFollowCounts(curator.id),
+  getPublicBinsByCurator(curator.id, 50),
+  countPublicBinsByCurator(curator.id),
+  current && !isOwnProfile ? isFollowing(current.id, curator.id) : Promise.resolve(false),
+]);
+
+const userVotes = current && bins.length > 0
+  ? await getVotesByCuratorAndSlugs(current.id, bins.map((b) => b.slug))
+  : {};
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const index = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${parseFloat((bytes / Math.pow(1024, index)).toFixed(2))} ${units[index]}`;
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 
 function formatDate(value: string): string {
@@ -47,7 +51,7 @@ function formatDate(value: string): string {
 }
 ---
 
-<Layout title="Discover · openbin">
+<Layout title={`@${curator.username} · openbin`}>
   <section class="flex flex-1 flex-col gap-4 overflow-hidden p-4 sm:p-6">
     <header class="flex shrink-0 flex-col border border-surface-light bg-surface shadow-sm">
       <div class="flex items-center justify-between gap-4 px-4 py-3">
@@ -57,69 +61,48 @@ function formatDate(value: string): string {
           </a>
           <div class="min-w-0">
             <p class="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Openbin</p>
-            <h1 class="text-sm font-medium text-main">Discover</h1>
-            <p class="text-xs text-muted">Recent public bins</p>
+            <h1 class="text-sm font-medium text-main">@{curator.username}</h1>
+            <p class="text-xs text-muted">Level {curator.level} · {curator.karma} karma</p>
           </div>
         </div>
-        <a href="/" class="h-8 border border-primary bg-primary px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-primary/90">
-          Create bin
-        </a>
+        <div class="flex shrink-0 items-center gap-2">
+          <a href="/" class="h-8 border border-primary bg-primary px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-primary/90">
+            Create bin
+          </a>
+          {current && !isOwnProfile && (
+            <button
+              type="button"
+              data-username={curator.username}
+              data-following={String(following)}
+              id="follow-btn"
+              class="h-8 border border-surface-light bg-surface px-3 text-xs font-medium text-main transition-colors hover:bg-surface-light"
+            >
+              {following ? 'Following' : 'Follow'}
+            </button>
+          )}
+        </div>
       </div>
 
-      <div class="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-surface-light bg-surface px-4 py-2">
-        <a
-          href="?tab=new"
-          class={[
-            'h-7 px-3 py-1.5 text-xs font-medium transition-colors',
-            tab === 'new' ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-surface-light hover:text-main',
-          ].join(' ')}
-        >
-          New
-        </a>
-        <a
-          href="?tab=popular"
-          class={[
-            'h-7 px-3 py-1.5 text-xs font-medium transition-colors',
-            tab === 'popular' ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-surface-light hover:text-main',
-          ].join(' ')}
-        >
-          Popular
-        </a>
-        <a
-          href="?tab=trending"
-          class={[
-            'h-7 px-3 py-1.5 text-xs font-medium transition-colors',
-            tab === 'trending' ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-surface-light hover:text-main',
-          ].join(' ')}
-        >
-          Trending
-        </a>
-        <a
-          href={selectedLang ? `?tab=language&lang=${encodeURIComponent(selectedLang)}` : '?tab=language'}
-          class={[
-            'h-7 px-3 py-1.5 text-xs font-medium transition-colors',
-            tab === 'language' ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-surface-light hover:text-main',
-          ].join(' ')}
-        >
-          Language
-        </a>
-        {tab === 'language' && languages.length > 0 && (
-          <select
-            id="language-select"
-            class="h-7 border border-surface-light bg-background px-2 text-xs text-main focus:outline-none"
-          >
-            {languages.map((lang) => (
-              <option value={lang} selected={lang === selectedLang}>{lang}</option>
-            ))}
-          </select>
-        )}
+      <div class="grid shrink-0 grid-cols-3 gap-3 border-t border-surface-light px-4 py-3">
+      <div class="border border-surface-light bg-surface p-3 text-center">
+        <p class="text-lg font-medium text-main">{binCount}</p>
+        <p class="text-[10px] uppercase tracking-wide text-muted">Bins</p>
       </div>
+      <div class="border border-surface-light bg-surface p-3 text-center">
+        <p class="text-lg font-medium text-main">{counts.followers}</p>
+        <p class="text-[10px] uppercase tracking-wide text-muted">Followers</p>
+      </div>
+      <div class="border border-surface-light bg-surface p-3 text-center">
+        <p class="text-lg font-medium text-main">{counts.following}</p>
+        <p class="text-[10px] uppercase tracking-wide text-muted">Following</p>
+      </div>
+    </div>
     </header>
 
     <main class="min-h-0 flex-1 overflow-auto bg-background shadow-sm sm:p-6">
-      {files.length > 0 ? (
+      {bins.length > 0 ? (
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {files.map((file) => {
+          {bins.map((file) => {
             const upvoted = userVotes[file.slug] === 1;
             const downvoted = userVotes[file.slug] === -1;
             return (
@@ -135,13 +118,7 @@ function formatDate(value: string): string {
                     <span class="shrink-0 text-[10px] text-muted">{formatBytes(Number(file.size))}</span>
                   </div>
                   <div class="flex items-center justify-between gap-2 border-t border-surface-light pt-3 text-xs text-muted">
-                    <span>
-                      {file.author ? (
-                        <span>by <a href={`/u/${file.author}`} class="text-primary hover:underline">{file.author}</a></span>
-                      ) : (
-                        'anonymous'
-                      )}
-                    </span>
+                    <span>score {file.score}</span>
                     <span>{formatDate(file.created_at)}</span>
                   </div>
                 </a>
@@ -151,13 +128,13 @@ function formatDate(value: string): string {
                       type="button"
                       data-slug={file.slug}
                       data-value="1"
-                      disabled={!curator}
+                      disabled={!current}
                       class={[
                         'vote-btn h-7 px-2 text-xs font-medium transition-colors',
                         upvoted ? 'bg-primary/10 text-primary' : 'text-muted hover:text-main',
-                        !curator && 'opacity-50 cursor-not-allowed',
+                        !current && 'opacity-50 cursor-not-allowed',
                       ].filter(Boolean).join(' ')}
-                      title={curator ? 'Upvote' : 'Login to vote'}
+                      title={current ? 'Upvote' : 'Login to vote'}
                     >
                       ▲
                     </button>
@@ -166,13 +143,13 @@ function formatDate(value: string): string {
                       type="button"
                       data-slug={file.slug}
                       data-value="-1"
-                      disabled={!curator}
+                      disabled={!current}
                       class={[
                         'vote-btn h-7 px-2 text-xs font-medium transition-colors',
                         downvoted ? 'bg-red-500/10 text-red-400' : 'text-muted hover:text-main',
-                        !curator && 'opacity-50 cursor-not-allowed',
+                        !current && 'opacity-50 cursor-not-allowed',
                       ].filter(Boolean).join(' ')}
-                      title={curator ? 'Downvote' : 'Login to vote'}
+                      title={current ? 'Downvote' : 'Login to vote'}
                     >
                       ▼
                     </button>
@@ -195,7 +172,7 @@ function formatDate(value: string): string {
         <div class="flex h-full flex-col items-center justify-center gap-2 text-center">
           <div class="flex h-10 w-10 items-center justify-center border border-surface-light bg-surface text-muted">∅</div>
           <p class="text-sm font-medium text-main">No public bins yet</p>
-          <p class="text-xs text-muted">Create a bin without a password to see it here.</p>
+          <p class="text-xs text-muted">This curator has not published anything.</p>
         </div>
       )}
     </main>
@@ -203,11 +180,26 @@ function formatDate(value: string): string {
 </Layout>
 
 <script>
-  const languageSelect = document.getElementById('language-select');
-  if (languageSelect) {
-    languageSelect.addEventListener('change', (e) => {
-      const target = e.target as HTMLSelectElement;
-      window.location.href = `?tab=language&lang=${encodeURIComponent(target.value)}`;
+  const followBtn = document.getElementById('follow-btn');
+  if (followBtn) {
+    const username = followBtn.getAttribute('data-username');
+    followBtn.addEventListener('click', async () => {
+      if (!username) return;
+      followBtn.setAttribute('disabled', 'true');
+      try {
+        const res = await fetch('/api/follows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
+        });
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          followBtn.removeAttribute('disabled');
+        }
+      } catch {
+        followBtn.removeAttribute('disabled');
+      }
     });
   }
 
