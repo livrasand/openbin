@@ -15,10 +15,11 @@ export function getClientIP(request: Request): string {
 }
 
 export function getPublicURL(request: Request): string {
+  const envUrl = process.env.PUBLIC_APP_URL;
+  if (envUrl) return envUrl.replace(/\/$/, '');
+
   const host = request.headers.get('host') ?? 'openbin.livrasand.com';
   const isLocalhost = host.startsWith('localhost:') || host.startsWith('127.0.0.1:');
-  const envUrl = process.env.PUBLIC_APP_URL;
-  if (envUrl && !isLocalhost) return envUrl.replace(/\/$/, '');
   const forwardedProto = request.headers.get('x-forwarded-proto');
   const protocol = isLocalhost ? 'http' : (forwardedProto ?? 'https');
   return `${protocol}://${host}`;
