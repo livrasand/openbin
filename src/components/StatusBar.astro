@@ -16,28 +16,30 @@ function getPrompt(path: string): string {
 }
 
 const prompt = getPrompt(Astro.url.pathname);
+const isSpace = Astro.url.pathname.startsWith('/spaces/') && Astro.url.pathname.length > '/spaces/'.length;
 
 interface Command {
   label: string;
   href: string;
-  shortcut: string;
+  shortcut?: string;
   id?: string;
 }
 
 const baseCommands: Command[] = [
-  { label: 'home', href: '/', shortcut: 'cmd+H' },
-  { label: 'discover', href: '/discover', shortcut: 'cmd+D' },
-  { label: 'karma', href: '/karma', shortcut: 'cmd+K' },
+  { label: 'home', href: '/' },
+  { label: 'discover', href: '/discover' },
+  { label: 'spaces', href: '/spaces' },
+  { label: 'karma', href: '/karma' },
 ];
 
 const authCommands: Command[] = curator
   ? []
   : [
-      { label: 'login', href: '/login', shortcut: 'cmd+L' },
-      { label: 'signup', href: '/create-account', shortcut: 'cmd+S' },
+      { label: 'login', href: '/login' },
+      { label: 'signup', href: '/create-account' },
     ];
 
-const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle theme', href: '#', shortcut: 'cmd', id: 'toggle-theme' }];
+const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle theme', href: '#', id: 'toggle-theme' }];
 ---
 
 <footer class="relative flex h-6 shrink-0 items-center justify-between border-t border-surface-light bg-surface px-3 text-[11px] font-mono text-muted">
@@ -51,7 +53,45 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
     <span class="animate-pulse text-primary">_</span>
   </button>
 
+  <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+    <button
+      type="button"
+      id="spaces-trigger"
+      class="text-[11px] font-medium text-primary hover:text-main hover:underline transition"
+      aria-haspopup="true"
+    >
+      spaces
+    </button>
+    <div
+      id="spaces-panel"
+      class="absolute bottom-full left-1/2 mb-1 hidden w-80 -translate-x-1/2 border border-surface-light bg-background p-3 shadow-lg text-left"
+    >
+      <h3 class="text-xs font-bold text-main mb-2">Spaces</h3>
+      <p class="text-[11px] text-muted mb-2 leading-relaxed">
+        Spaces are simple HTTP pub/sub channels for notifications, similar to ntfy but fully free and open source. Create a space by publishing to it.
+      </p>
+      <code class="block text-[10px] text-main bg-surface-light p-1.5 mb-2 whitespace-pre-wrap break-words">curl -d "Backup successful" https://openbin.livrasand.com/s/myspace</code>
+      <p class="text-[11px] text-muted mb-1">Create or join a space:</p>
+      <a href="/spaces" class="text-[11px] text-primary hover:underline">/spaces</a>
+      <p class="text-[11px] text-muted mt-2 mb-1">Example space:</p>
+      <a href="/s/myspace" class="text-[11px] text-primary hover:underline">/s/myspace</a>
+      <p class="text-[10px] text-muted mt-2">Web Push requires VAPID keys. Run <code class="bg-surface-light px-1">npx web-push generate-vapid-keys</code>.</p>
+    </div>
+  </div>
+
   <div class="flex items-center gap-2">
+    {isSpace && (
+      <button
+        type="button"
+        id="publish-trigger"
+        class="text-[11px] text-primary hover:text-main hover:underline transition"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24">
+          <path d="M0 0h24v24H0z" fill="none" />
+          <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904zM6 12h16" />
+        </svg>
+      </button>
+    )}
     {curator ? (
       <>
         <a href={`/u/${curator.username}`} class="text-primary hover:underline">
@@ -69,7 +109,7 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
 
   <div
     id="command-menu"
-    class="absolute bottom-full left-0 mb-1 hidden w-56 border border-surface-light bg-surface shadow-lg"
+    class="absolute bottom-full left-0 mb-1 hidden w-56 border border-surface-light bg-background shadow-lg"
   >
     <ul class="flex flex-col py-1">
       {commands.map((cmd) => (
@@ -81,7 +121,7 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
               class="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-main hover:bg-surface-light"
             >
               <span>{cmd.label}</span>
-              <span class="text-[10px] text-muted">{cmd.shortcut}</span>
+              {cmd.shortcut && <span class="text-[10px] text-muted">{cmd.shortcut}</span>}
             </button>
           ) : (
             <a
@@ -89,7 +129,7 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
               class="flex items-center justify-between px-3 py-1.5 text-xs text-main hover:bg-surface-light"
             >
               <span>{cmd.label}</span>
-              <span class="text-[10px] text-muted">{cmd.shortcut}</span>
+              {cmd.shortcut && <span class="text-[10px] text-muted">{cmd.shortcut}</span>}
             </a>
           )}
         </li>
@@ -102,7 +142,6 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
               class="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-main hover:bg-surface-light"
             >
               <span>logout</span>
-              <span class="text-[10px] text-muted">cmd</span>
             </button>
           </form>
         </li>
@@ -118,7 +157,29 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
 <script>
   const trigger = document.getElementById('command-trigger');
   const menu = document.getElementById('command-menu');
+  const spacesTrigger = document.getElementById('spaces-trigger');
+  const spacesPanel = document.getElementById('spaces-panel');
+  const publishTrigger = document.getElementById('publish-trigger');
   const toggleTheme = document.querySelector('[data-cmd="toggle-theme"]');
+
+  if (spacesTrigger && spacesPanel) {
+    spacesTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      spacesPanel.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!spacesPanel.classList.contains('hidden') && !spacesPanel.contains(e.target as Node) && e.target !== spacesTrigger) {
+        spacesPanel.classList.add('hidden');
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        spacesPanel.classList.add('hidden');
+      }
+    });
+  }
 
   if (trigger && menu) {
     trigger.addEventListener('click', (e) => {
@@ -136,6 +197,12 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
       if (e.key === 'Escape') {
         menu.classList.add('hidden');
       }
+    });
+  }
+
+  if (publishTrigger) {
+    publishTrigger.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('open-publish-panel'));
     });
   }
 

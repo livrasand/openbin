@@ -28,6 +28,37 @@ export interface RateLimitResult {
   reset: number;
 }
 
+export async function checkSpaceRateLimit(ip: string): Promise<RateLimitResult> {
+  const limit = Number(process.env.SPACE_RATE_LIMIT ?? '30');
+  const windowSeconds = Number(process.env.SPACE_RATE_WINDOW ?? '60');
+
+  if (!isConfigured()) {
+    console.warn('Vercel KV not configured; rate limiting disabled');
+    return { allowed: true, remaining: limit, limit, reset: 0 };
+  }
+
+  const safeIp = ip.replace(/[^a-zA-Z0-9]/g, '-');
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const windowStart = Math.floor(nowSeconds / windowSeconds) * windowSeconds;
+  const key = `rate:space:${safeIp}:${windowStart}`;
+
+  const client = getKv();
+  const current = await client.incr(key);
+
+  if (current === 1) {
+    await client.expire(key, windowSeconds);
+  }
+
+  const reset = windowStart + windowSeconds;
+
+  return {
+    allowed: current <= limit,
+    remaining: Math.max(0, limit - current),
+    limit,
+    reset,
+  };
+}
+
 export async function checkUploadRateLimit(ip: string): Promise<RateLimitResult> {
   const limit = Number(process.env.UPLOAD_RATE_LIMIT ?? '10');
   const windowSeconds = Number(process.env.UPLOAD_RATE_WINDOW ?? '3600');

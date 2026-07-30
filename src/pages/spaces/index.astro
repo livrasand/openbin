@@ -1,0 +1,119 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getCurrentCurator } from '../../lib/auth';
+import { getCuratorSpaceSubscriptions } from '../../lib/spaces';
+
+const curator = await getCurrentCurator(Astro.cookies);
+const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id) : [];
+---
+
+<Layout title="Openbin Spaces">
+  <section class="flex-1 flex flex-col items-center justify-center p-4 sm:p-6">
+    <div class="w-full max-w-sm border border-surface-light bg-surface p-6 shadow-sm">
+      <div class="mb-6 flex items-center gap-3">
+        <a href="/">
+          <img src="/favicon.svg" alt="" class="h-8 w-8" />
+        </a>
+        <div>
+          <h1 class="text-sm font-medium text-main">Spaces</h1>
+          <p class="text-xs text-muted">Create or join a public pub/sub channel.</p>
+        </div>
+      </div>
+
+      <form id="space-form" class="flex flex-col gap-3">
+        <div class="flex gap-2">
+          <input
+            id="space-name"
+            type="text"
+            placeholder="myspace"
+            required
+            minlength="3"
+            maxlength="64"
+            pattern="[a-zA-Z0-9_-]{3,64}"
+            title="3–64 letters, numbers, underscores or dashes"
+            class="h-8 flex-1 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+          />
+          <button
+            type="button"
+            id="random-space"
+            class="h-8 border border-surface-light bg-surface px-3 text-xs text-main transition hover:bg-surface-light"
+            title="Generate a hard-to-guess name"
+          >
+            Random
+          </button>
+        </div>
+        <p id="error" class="hidden text-xs text-red-400"></p>
+        <button
+          type="submit"
+          class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Create / Join space
+        </button>
+      </form>
+
+      <div class="mt-6 text-[10px] text-muted">
+        <p class="mb-1">Publish from anywhere:</p>
+        <code class="block text-main bg-background border border-surface-light p-2 break-all font-mono">
+          curl -d "Backup successful" https://openbin.livrasand.com/s/myspace
+        </code>
+      </div>
+
+      <div class="mt-6" id="subscribed-section">
+        <p class="text-xs font-medium text-main mb-2">Subscribed spaces</p>
+        <ul class="text-xs text-main" id="subscribed-spaces" data-logged-in={!!curator} data-spaces={JSON.stringify(subscribedSpaces)}>
+          {subscribedSpaces.length === 0 ? (
+            <li class="text-muted" id="no-subscriptions">No subscriptions yet.</li>
+          ) : (
+            subscribedSpaces.map((name) => (
+              <li>
+                <a href={`/s/${name}`} class="text-primary hover:underline">/{name}</a>
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<script is:inline>
+  const form = document.getElementById('space-form');
+  const input = document.getElementById('space-name');
+  const error = document.getElementById('error');
+  const subscribedList = document.getElementById('subscribed-spaces');
+  const randomSpaceBtn = document.getElementById('random-space');
+
+  if (subscribedList && subscribedList.dataset.loggedIn !== 'true') {
+    try {
+      const subs = JSON.parse(localStorage.getItem('space:subs') || '[]');
+      if (Array.isArray(subs) && subs.length > 0) {
+        subscribedList.innerHTML = subs
+          .map((name) => `<li><a href="/s/${encodeURIComponent(name)}" class="text-primary hover:underline">/${name}</a></li>`)
+          .join('');
+      }
+    } catch {}
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!/^[a-zA-Z0-9_-]{3,64}$/.test(name)) {
+      error.textContent = 'Use 3–64 letters, numbers, underscores or dashes.';
+      error.classList.remove('hidden');
+      return;
+    }
+    error.classList.add('hidden');
+    window.location.href = `/s/${encodeURIComponent(name)}`;
+  });
+
+  if (randomSpaceBtn && input) {
+    randomSpaceBtn.addEventListener('click', () => {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      let suffix = '';
+      for (let i = 0; i < 12; i += 1) {
+        suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      input.value = `space-${suffix}`;
+    });
+  }
+</script>

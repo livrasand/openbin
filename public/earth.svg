@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 12 12" class="size-6">
+    <g transform="matrix(1 0 0 -1 0 12)">
+        <path fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" d="M11.0002487 10.3303432 5.9999991 1.6696563m5.0002509 8.6606869H.999749m0 0 5.0002501-8.6606869"></path>
+        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" d="M.99975 6h10.0005"></path>
+    </g>
+</svg>

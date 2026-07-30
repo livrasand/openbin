@@ -685,6 +685,8 @@ export default function CodeEditor() {
     return Array.from({ length: count }, (_, i) => i + 1).join('\n');
   }, [activeTab.code]);
 
+  const lineDigits = useMemo(() => String(lineNumbers.split('\n').length).length, [lineNumbers]);
+
   const shikiLanguage = activeTab.language === 'text' ? 'plaintext' : activeTab.language;
   const shikiTheme = theme === 'dark' ? 'github-dark' : 'github-light';
   const shikiHtml = useShikiHighlighter(activeTab.code, shikiLanguage, shikiTheme, {
@@ -1186,13 +1188,15 @@ export default function CodeEditor() {
           <pre
             ref={gutterRef}
             aria-hidden="true"
-            className="absolute left-0 top-0 bottom-0 w-6 overflow-hidden m-0 py-4 pr-2 text-right font-mono text-sm leading-5 text-muted bg-transparent border-r border-surface no-scrollbar pointer-events-none select-none"
+            className="absolute left-0 top-0 bottom-0 min-w-6 overflow-hidden m-0 py-4 pr-2 text-right font-mono text-sm leading-5 text-muted bg-transparent border-r border-surface no-scrollbar pointer-events-none select-none"
+            style={{ width: `calc(${lineDigits}ch + 1.5rem)` }}
           >
             {lineNumbers}
           </pre>
           <div
             ref={shikiRef}
-            className="absolute inset-0 overflow-auto whitespace-pre pl-12 pr-4 py-4 font-mono text-sm leading-5 text-main"
+            className="absolute inset-0 overflow-auto whitespace-pre pr-4 py-4 font-mono text-sm leading-5 text-main"
+            style={{ paddingLeft: `calc(${lineDigits}ch + 2.5rem)` }}
             dangerouslySetInnerHTML={{
               __html:
                 shikiHtml || `<pre class="shiki-fallback" style="margin:0;padding:0">${escapeHtml(activeTab.code)}</pre>`,
@@ -1201,8 +1205,8 @@ export default function CodeEditor() {
           <pre
             ref={overlayRef}
             aria-hidden="true"
-            className="absolute inset-0 m-0 overflow-auto whitespace-pre pl-12 pr-4 py-4 font-mono text-sm leading-5 text-transparent no-scrollbar pointer-events-none"
-            style={{ tabSize: INDENT_TAB_SIZE, MozTabSize: INDENT_TAB_SIZE }}
+            className="absolute inset-0 m-0 overflow-auto whitespace-pre pr-4 py-4 font-mono text-sm leading-5 text-transparent no-scrollbar pointer-events-none"
+            style={{ paddingLeft: `calc(${lineDigits}ch + 2.5rem)`, tabSize: INDENT_TAB_SIZE, MozTabSize: INDENT_TAB_SIZE }}
             dangerouslySetInnerHTML={{ __html: renderEditorOverlay(activeTab.code, showTodos) }}
           />
           <textarea
@@ -1211,8 +1215,8 @@ export default function CodeEditor() {
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleCodeChange(activeTab.id, e.target.value)}
             onScroll={handleScroll}
             spellCheck={false}
-            className="rainbow-editor absolute inset-0 h-full w-full resize-none overflow-auto whitespace-pre bg-transparent pl-12 pr-4 py-4 font-mono text-sm leading-5 text-transparent caret-[var(--color-main)] focus:outline-none"
-            style={{ tabSize: INDENT_TAB_SIZE, MozTabSize: INDENT_TAB_SIZE }}
+            className="rainbow-editor absolute inset-0 h-full w-full resize-none overflow-auto whitespace-pre bg-transparent pr-4 py-4 font-mono text-sm leading-5 text-transparent caret-[var(--color-main)] focus:outline-none"
+            style={{ paddingLeft: `calc(${lineDigits}ch + 2.5rem)`, tabSize: INDENT_TAB_SIZE, MozTabSize: INDENT_TAB_SIZE }}
           />
         </div>
 

@@ -144,5 +144,41 @@ await pool.sql`
 `;
 await pool.sql`CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id)`;
 
+await pool.sql`
+  CREATE TABLE IF NOT EXISTS spaces (
+    name VARCHAR(64) PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`;
+await pool.sql`CREATE INDEX IF NOT EXISTS idx_spaces_updated_at ON spaces(updated_at)`;
+
+await pool.sql`
+  CREATE TABLE IF NOT EXISTS space_messages (
+    id BIGSERIAL PRIMARY KEY,
+    space_name VARCHAR(64) NOT NULL REFERENCES spaces(name) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    title TEXT,
+    priority SMALLINT DEFAULT 3,
+    tags TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`;
+await pool.sql`CREATE INDEX IF NOT EXISTS idx_space_messages_space_name_created_at ON space_messages(space_name, created_at DESC)`;
+await pool.sql`CREATE INDEX IF NOT EXISTS idx_space_messages_created_at ON space_messages(created_at)`;
+
+await pool.sql`
+  CREATE TABLE IF NOT EXISTS space_subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    space_name VARCHAR(64) NOT NULL REFERENCES spaces(name) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(space_name, endpoint)
+  )
+`;
+await pool.sql`CREATE INDEX IF NOT EXISTS idx_space_subscriptions_space_name ON space_subscriptions(space_name)`;
+
 console.log('Database schema ready');
 process.exit(0);

@@ -1,0 +1,496 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getCurrentCurator } from '../../lib/auth';
+import { getSpaceMessages, validateSpaceName } from '../../lib/spaces';
+
+const { name } = Astro.params;
+const spaceName = typeof name === 'string' ? name : '';
+const isValid = validateSpaceName(spaceName);
+const initial = isValid ? await getSpaceMessages(spaceName) : [];
+const curator = await getCurrentCurator(Astro.cookies);
+
+function priorityBorder(priority: number) {
+  if (priority === 5) return 'border-l-red-500';
+  if (priority === 4) return 'border-l-orange-500';
+  if (priority === 2) return 'border-l-secondary';
+  if (priority === 1) return 'border-l-gray-500';
+  return 'border-l-primary';
+}
+
+function priorityBadge(priority: number) {
+  if (priority === 5) return 'bg-red-500';
+  if (priority === 4) return 'bg-orange-500';
+  if (priority === 2) return 'bg-secondary';
+  if (priority === 1) return 'bg-gray-500';
+  return 'bg-primary';
+}
+---
+
+<Layout title={`${spaceName} · openbin`}>
+  <section class="flex-1 flex flex-col overflow-hidden p-4">
+    <div class="max-w-2xl w-full mx-auto flex flex-col h-full gap-4">
+      <header class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-main">/{spaceName}</h1>
+        <div class="flex items-center gap-2">
+          <button
+            id="subscribe-toggle"
+            class="hidden h-8 border border-surface-light px-3 text-xs font-medium text-main transition hover:bg-surface-light"
+            type="button"
+          >
+            Subscribe
+          </button>
+          <button
+            id="push-toggle"
+            class="hidden h-8 border border-surface-light px-3 text-xs font-medium text-main transition hover:bg-surface-light disabled:opacity-50"
+            disabled
+          >
+            Enable notifications
+          </button>
+        </div>
+      </header>
+
+      {!isValid && (
+        <div class="text-sm text-main bg-red-500/10 border border-red-500/30 p-3">
+          Invalid space name. Use 3–64 letters, numbers, underscores or dashes.
+        </div>
+      )}
+
+      <div
+        id="messages"
+        class="flex-1 overflow-y-auto border border-surface-light bg-surface p-3 min-h-0"
+      >
+        {initial.length === 0 && (
+          <div id="empty" class="flex h-full flex-col items-center justify-center gap-2 text-center">
+            <div class="flex h-10 w-10 items-center justify-center border border-surface-light bg-surface text-muted">∅</div>
+            <p class="text-sm font-medium text-main">No messages yet</p>
+            <p class="text-xs text-muted flex items-center justify-center gap-1">
+              <span>Send one with curl or the</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" class="inline-block align-middle">
+                <path d="M0 0h24v24H0z" fill="none" />
+                <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904zM6 12h16" />
+              </svg>
+              <span>button in the status bar.</span>
+            </p>
+          </div>
+        )}
+        {initial.map((msg) => (
+          <article
+            class={`text-sm border border-surface-light bg-background shadow-sm p-4 mb-3 border-l-4 ${priorityBorder(msg.priority)}`}
+            data-id={msg.id}
+          >
+            <div class="flex items-start justify-between gap-3 mb-2">
+              <div class="flex flex-wrap items-center gap-2">
+                {msg.title && <span class="font-bold text-main text-sm">{msg.title}</span>}
+                {msg.priority !== 3 && (
+                  <span class={`text-[10px] px-1.5 py-0.5 text-white ${priorityBadge(msg.priority)}`}>
+                    P{msg.priority}
+                  </span>
+                )}
+                {msg.tags && <span class="text-[10px] text-muted">#{msg.tags}</span>}
+              </div>
+              <span class="flex items-center gap-2 shrink-0">
+                <time class="text-[10px] text-muted">{new Date(msg.created_at).toLocaleString()}</time>
+                <button type="button" data-action="read" data-id={msg.id} class="text-[10px] text-primary hover:underline">read</button>
+                <button type="button" data-action="delete" data-id={msg.id} class="text-[10px] text-red-400 hover:underline">delete</button>
+              </span>
+            </div>
+            <p class="text-main whitespace-pre-wrap break-words leading-relaxed">{msg.message}</p>
+          </article>
+        ))}
+      </div>
+
+      <div class="text-xs text-muted">
+        Publish via HTTP:
+        <code class="text-main bg-surface px-1">curl -d "Hello" {Astro.url.origin}/s/{spaceName}</code>
+      </div>
+    </div>
+  </section>
+
+  {isValid && (
+    <div
+      id="publish-panel"
+      class="fixed bottom-0 left-0 right-0 z-50 hidden border-t border-surface-light bg-background p-4 shadow-lg"
+    >
+      <div class="max-w-2xl mx-auto flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-main">Publish to /{spaceName}</span>
+          <button
+            type="button"
+            id="publish-panel-close"
+            class="text-xs text-muted hover:text-main"
+          >
+            close
+          </button>
+        </div>
+        <form id="publish-form" class="flex flex-col gap-2">
+          <div class="flex gap-2">
+            <input
+              id="title"
+              name="title"
+              type="text"
+              placeholder="Title"
+              class="h-9 flex-1 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+            />
+            <select
+              id="priority"
+              name="priority"
+              class="h-9 border border-surface-light bg-background px-3 text-xs text-main focus:border-secondary focus:outline-none"
+            >
+              <option value="3">Default</option>
+              <option value="5">Urgent</option>
+              <option value="4">High</option>
+              <option value="2">Low</option>
+              <option value="1">Min</option>
+            </select>
+          </div>
+          <input
+            id="tags"
+            name="tags"
+            type="text"
+            placeholder="Tags (comma separated)"
+            class="h-9 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+          />
+          <textarea
+            id="message"
+            name="message"
+            rows="2"
+            placeholder="Message..."
+            required
+            class="w-full border border-surface-light bg-background px-3 py-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none resize-none"
+          ></textarea>
+          <button
+            type="submit"
+            class="self-end h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+          >
+            Publish
+          </button>
+        </form>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script is:inline define:vars={{ spaceName, isValid, isLoggedIn: !!curator }}>
+  const messagesEl = document.getElementById('messages');
+  const emptyEl = document.getElementById('empty');
+  const form = document.getElementById('publish-form');
+  const publishPanel = document.getElementById('publish-panel');
+  const publishPanelClose = document.getElementById('publish-panel-close');
+  const pushToggle = document.getElementById('push-toggle');
+  const subscribeToggle = document.getElementById('subscribe-toggle');
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  var readIds = new Set();
+  var readKey = '';
+
+  function saveReadIds() {
+    if (typeof localStorage !== 'undefined' && readKey) {
+      localStorage.setItem(readKey, JSON.stringify(Array.from(readIds)));
+    }
+  }
+
+  function markRead(id) {
+    readIds.add(id);
+    saveReadIds();
+    const article = document.querySelector(`[data-id="${id}"]`);
+    if (article) {
+      article.classList.add('opacity-50');
+      const p = article.querySelector('p');
+      if (p) p.classList.add('line-through');
+    }
+  }
+
+  function isRead(id) {
+    return readIds.has(id);
+  }
+
+  function appendMessage(msg) {
+    if (emptyEl) emptyEl.remove();
+
+    const existing = document.querySelector(`[data-id="${msg.id}"]`);
+    if (existing) return;
+
+    const article = document.createElement('article');
+    const priorityBorderClass = msg.priority === 5 ? 'border-l-red-500' : msg.priority === 4 ? 'border-l-orange-500' : msg.priority === 2 ? 'border-l-secondary' : msg.priority === 1 ? 'border-l-gray-500' : 'border-l-primary';
+    const priorityBadgeClass = msg.priority === 5 ? 'bg-red-500' : msg.priority === 4 ? 'bg-orange-500' : msg.priority === 2 ? 'bg-secondary' : msg.priority === 1 ? 'bg-gray-500' : 'bg-primary';
+    article.className = `text-sm border border-surface-light bg-background shadow-sm p-4 mb-3 border-l-4 ${priorityBorderClass}`;
+    article.dataset.id = String(msg.id);
+    const tags = msg.tags ? `<span class="text-[10px] text-muted">#${escapeHtml(msg.tags)}</span>` : '';
+    const title = msg.title ? `<span class="font-bold text-main text-sm">${escapeHtml(msg.title)}</span>` : '';
+    const priority = msg.priority !== 3 ? `<span class="text-[10px] px-1.5 py-0.5 text-white ${priorityBadgeClass}">P${msg.priority}</span>` : '';
+    const time = new Date(msg.created_at).toLocaleString();
+    article.innerHTML = `
+      <div class="flex items-start justify-between gap-3 mb-2">
+        <div class="flex flex-wrap items-center gap-2">
+          ${title}
+          ${priority}
+          ${tags}
+        </div>
+        <span class="flex items-center gap-2 shrink-0">
+          <time class="text-[10px] text-muted">${time}</time>
+          <button type="button" data-action="read" data-id="${msg.id}" class="text-[10px] text-primary hover:underline">read</button>
+          <button type="button" data-action="delete" data-id="${msg.id}" class="text-[10px] text-red-400 hover:underline">delete</button>
+        </span>
+      </div>
+      <p class="text-main whitespace-pre-wrap break-words leading-relaxed">${escapeHtml(msg.message)}</p>
+    `;
+    if (isRead(msg.id)) {
+      article.classList.add('opacity-50');
+      const p = article.querySelector('p');
+      if (p) p.classList.add('line-through');
+    }
+    messagesEl.prepend(article);
+  }
+
+  function applyReadStates() {
+    for (const id of readIds) {
+      const article = document.querySelector(`[data-id="${id}"]`);
+      if (article) {
+        article.classList.add('opacity-50');
+        const p = article.querySelector('p');
+        if (p) p.classList.add('line-through');
+      }
+    }
+  }
+
+  if (isValid) {
+    function openPublishPanel() {
+      if (publishPanel) publishPanel.classList.remove('hidden');
+    }
+    function closePublishPanel() {
+      if (publishPanel) publishPanel.classList.add('hidden');
+    }
+
+    window.addEventListener('open-publish-panel', openPublishPanel);
+    if (publishPanelClose) {
+      publishPanelClose.addEventListener('click', closePublishPanel);
+    }
+
+    readKey = `space:read:${spaceName}`;
+    try {
+      readIds = new Set(JSON.parse(localStorage.getItem(readKey) || '[]'));
+    } catch {}
+
+    applyReadStates();
+
+    // SSE
+    const sse = new EventSource(`/s/${encodeURIComponent(spaceName)}/sse`);
+    sse.addEventListener('message', (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        appendMessage(msg);
+      } catch {}
+    });
+
+    // Fallback polling
+    setInterval(async () => {
+      try {
+        const res = await fetch(`/s/${encodeURIComponent(spaceName)}`);
+        const data = await res.json();
+        if (Array.isArray(data.messages)) {
+          data.messages.slice().reverse().forEach(appendMessage);
+        }
+      } catch {}
+    }, 5000);
+
+    // Publish form
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const body = { message: fd.get('message').toString() };
+      const title = fd.get('title').toString().trim();
+      const priority = Number(fd.get('priority'));
+      const tags = fd.get('tags').toString().trim();
+      if (title) body.title = title;
+      if (priority) body.priority = priority;
+      if (tags) body.tags = tags;
+
+      try {
+        const res = await fetch(`/s/${encodeURIComponent(spaceName)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to publish');
+        if (data.message) appendMessage(data.message);
+        form.reset();
+        closePublishPanel();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    messagesEl.addEventListener('click', async (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      const action = target.dataset.action;
+      const id = Number(target.dataset.id);
+      if (!action || !Number.isFinite(id)) return;
+
+      if (action === 'read') {
+        markRead(id);
+        return;
+      }
+
+      if (action === 'delete') {
+        try {
+          const res = await fetch(`/s/${encodeURIComponent(spaceName)}/${id}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to delete');
+          const article = document.querySelector(`[data-id="${id}"]`);
+          if (article) article.remove();
+        } catch (err) {
+          alert(err.message);
+        }
+      }
+    });
+
+    // Space subscription
+    if (subscribeToggle) subscribeToggle.classList.remove('hidden');
+
+    const SUBS_KEY = 'space:subs';
+
+    function getLocalSubs() {
+      try {
+        return JSON.parse(localStorage.getItem(SUBS_KEY) || '[]');
+      } catch {
+        return [];
+      }
+    }
+
+    function setLocalSubs(subs) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(SUBS_KEY, JSON.stringify(subs));
+      }
+    }
+
+    function updateSubscribeUI(subscribed) {
+      if (subscribeToggle) subscribeToggle.textContent = subscribed ? 'Unsubscribe' : 'Subscribe';
+    }
+
+    let isSubscribed = false;
+
+    async function loadSubscriptionState() {
+      if (isLoggedIn) {
+        try {
+          const res = await fetch('/api/curators/spaces');
+          const data = await res.json();
+          if (res.ok) {
+            isSubscribed = Array.isArray(data.spaces) && data.spaces.includes(spaceName);
+            updateSubscribeUI(isSubscribed);
+          }
+        } catch {}
+      } else {
+        isSubscribed = getLocalSubs().includes(spaceName);
+        updateSubscribeUI(isSubscribed);
+      }
+    }
+
+    loadSubscriptionState().catch(() => {});
+
+    if (subscribeToggle) {
+      subscribeToggle.addEventListener('click', async () => {
+        if (isLoggedIn) {
+          try {
+            const res = await fetch('/api/curators/spaces', {
+              method: isSubscribed ? 'DELETE' : 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: spaceName }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to update subscription');
+            isSubscribed = Array.isArray(data.spaces) && data.spaces.includes(spaceName);
+            updateSubscribeUI(isSubscribed);
+          } catch (err) {
+            alert(err.message);
+          }
+        } else {
+          const subs = getLocalSubs();
+          const idx = subs.indexOf(spaceName);
+          if (idx >= 0) subs.splice(idx, 1);
+          else subs.push(spaceName);
+          setLocalSubs(subs);
+          isSubscribed = idx < 0;
+          updateSubscribeUI(isSubscribed);
+        }
+      });
+    }
+
+    // Web Push
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      pushToggle.classList.remove('hidden');
+
+      let registration;
+      let currentSubscription;
+      let vapidPublicKey;
+
+      async function initPush() {
+        const keyRes = await fetch('/s/key');
+        const data = await keyRes.json();
+        vapidPublicKey = data.publicKey;
+        if (!vapidPublicKey) {
+          pushToggle.textContent = 'Push not configured';
+          pushToggle.disabled = true;
+          return;
+        }
+        if (Notification.permission === 'denied') {
+          pushToggle.textContent = 'Push denied';
+          pushToggle.disabled = true;
+          return;
+        }
+        pushToggle.disabled = false;
+        registration = await navigator.serviceWorker.register('/service-worker.js');
+        currentSubscription = await registration.pushManager.getSubscription();
+        pushToggle.textContent = currentSubscription ? 'Disable notifications' : 'Enable notifications';
+      }
+
+      initPush().catch(() => {});
+
+      pushToggle.addEventListener('click', async () => {
+        try {
+          if (!vapidPublicKey) return;
+          if (Notification.permission === 'denied') {
+            alert('Push notifications are blocked. Allow them in your browser settings for this site.');
+            return;
+          }
+          if (currentSubscription) {
+            await currentSubscription.unsubscribe();
+            await fetch(`/s/${encodeURIComponent(spaceName)}/subscribe`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: currentSubscription.endpoint }),
+            });
+            currentSubscription = null;
+          } else {
+            if (Notification.permission === 'default') {
+              const permission = await Notification.requestPermission();
+              if (permission !== 'granted') {
+                pushToggle.textContent = 'Push denied';
+                pushToggle.disabled = true;
+                return;
+              }
+            }
+            currentSubscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: vapidPublicKey,
+            });
+            await fetch(`/s/${encodeURIComponent(spaceName)}/subscribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(currentSubscription),
+            });
+          }
+          pushToggle.textContent = currentSubscription ? 'Disable notifications' : 'Enable notifications';
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
+  }
+</script>

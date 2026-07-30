@@ -234,6 +234,52 @@ export async function ensureSchema(): Promise<void> {
   `;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id)`;
 
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS spaces (
+      name VARCHAR(64) PRIMARY KEY,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_spaces_updated_at ON spaces(updated_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS space_messages (
+      id BIGSERIAL PRIMARY KEY,
+      space_name VARCHAR(64) NOT NULL REFERENCES spaces(name) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      title TEXT,
+      priority SMALLINT DEFAULT 3,
+      tags TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_space_messages_space_name_created_at ON space_messages(space_name, created_at DESC)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_space_messages_created_at ON space_messages(created_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS space_subscriptions (
+      id BIGSERIAL PRIMARY KEY,
+      space_name VARCHAR(64) NOT NULL REFERENCES spaces(name) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(space_name, endpoint)
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_space_subscriptions_space_name ON space_subscriptions(space_name)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS curator_spaces (
+      curator_id CHAR(16) NOT NULL REFERENCES curators(id) ON DELETE CASCADE,
+      space_name VARCHAR(64) NOT NULL REFERENCES spaces(name) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (curator_id, space_name)
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_curator_spaces_curator_id ON curator_spaces(curator_id)`;
+
   schemaEnsured = true;
 }
 
