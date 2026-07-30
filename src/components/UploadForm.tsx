@@ -510,6 +510,7 @@ export default function CodeEditor() {
   const [visibility, setVisibility] = useState<'public' | 'secret' | 'private'>('public');
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   const [publishMenuPosition, setPublishMenuPosition] = useState<{ right: number; bottom: number } | null>(null);
+  const [mobileOptionsOpen, setMobileOptionsOpen] = useState(false);
   const [showTodos, setShowTodos] = useState(true);
   const [newTodoTag, setNewTodoTag] = useState('TODO');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -988,8 +989,8 @@ export default function CodeEditor() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden gap-3">
-      <div className="flex items-center overflow-x-auto shrink-0">
+    <div className="flex min-w-0 flex-col h-full overflow-hidden gap-3">
+      <div className="flex min-w-0 items-center overflow-x-auto shrink-0">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
           return (
@@ -1070,7 +1071,7 @@ export default function CodeEditor() {
           multiple
           tabIndex={-1}
         />
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => {
@@ -1259,21 +1260,32 @@ export default function CodeEditor() {
           </div>
         )}
 
-        <div className="flex items-center gap-1 px-2 py-1.5 bg-surface border-t border-surface-light shrink-0 overflow-x-auto">
-          <div className="flex items-center gap-1 shrink-0">
+        <div className="shrink-0 border-t border-surface-light bg-surface p-2">
+          <button
+            type="button"
+            onClick={() => setMobileOptionsOpen((open) => !open)}
+            className="flex h-10 w-full items-center justify-between rounded bg-surface-light px-3 text-xs font-medium text-main sm:hidden"
+            aria-expanded={mobileOptionsOpen}
+          >
+            <span>File and publish options</span>
+            <ChevronDown className={`h-4 w-4 transition-transform ${mobileOptionsOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className={`${mobileOptionsOpen ? 'grid' : 'hidden'} gap-2 pt-2 sm:flex sm:min-w-0 sm:items-center sm:gap-1 sm:overflow-x-auto` }>
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:flex sm:shrink-0 sm:items-center sm:gap-1">
             <input
               type="text"
               value={activeTab.filename}
               onChange={(e) => handleFilenameChange(activeTab.id, e.target.value)}
               placeholder="Main"
               title="Filename"
-              className="h-7 w-24 bg-surface rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary"
+              className="h-9 w-full min-w-0 bg-surface rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary sm:h-7 sm:w-24"
             />
             <select
               value={activeTab.language}
               onChange={(e) => handleLanguageChange(activeTab.id, e.target.value)}
               title="Language"
-              className="h-7 w-24 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary"
+              className="h-9 w-full min-w-0 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary sm:h-7 sm:w-24"
             >
               {['text', ...COMMON_LANGUAGES].map((lang) => (
                 <option key={lang} value={lang}>
@@ -1283,13 +1295,13 @@ export default function CodeEditor() {
             </select>
           </div>
 
-          <div className="w-px h-4 bg-surface-light shrink-0" />
+          <div className="hidden h-px bg-surface-light sm:block sm:h-4 sm:w-px" />
 
-          <div className="flex items-center gap-1 shrink-0">
-            <span className="h-7 flex items-center px-2 text-xs text-muted" title="Author">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:flex sm:shrink-0 sm:items-center sm:gap-1">
+            <span className="col-span-2 flex h-7 min-w-0 items-center truncate px-1 text-xs text-muted sm:h-7 sm:px-2" title="Author">
               {curator ? `@${curator.username}` : 'anonymous'}
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1">
               <input
                 type="text"
                 value={password}
@@ -1297,13 +1309,13 @@ export default function CodeEditor() {
                 disabled={isEditing || visibility !== 'private'}
                 placeholder={visibility === 'private' ? 'password' : '—'}
                 title={visibility === 'private' ? 'Password' : 'Only used for private bins'}
-                className="h-7 w-24 bg-surface rounded ounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary disabled:opacity-50"
+                className="h-9 w-full min-w-0 bg-surface rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary disabled:opacity-50 sm:h-7 sm:w-24"
               />
               <button
                 type="button"
                 onClick={handleGeneratePassword}
                 disabled={isEditing || visibility !== 'private'}
-                className="h-7 w-7 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition disabled:opacity-50"
+                className="h-9 w-9 shrink-0 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition disabled:opacity-50 sm:h-7 sm:w-7"
                 title="Generate password"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -1314,7 +1326,7 @@ export default function CodeEditor() {
               onChange={(e) => setExpiresIn(e.target.value)}
               disabled={isEditing}
               title="Expiration"
-              className="h-7 w-32 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary disabled:opacity-50"
+              className="h-9 w-full min-w-0 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary disabled:opacity-50 sm:h-7 sm:w-32"
             >
               {EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={String(option.value)}>
@@ -1324,11 +1336,11 @@ export default function CodeEditor() {
             </select>
           </div>
 
-          <div className="w-px h-4 bg-surface-light shrink-0" />
+          <div className="hidden h-px bg-surface-light sm:block sm:h-4 sm:w-px" />
 
-          <div className="flex items-center gap-1 ml-auto shrink-0">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:ml-auto sm:flex sm:shrink-0 sm:items-center sm:gap-1">
             <label
-              className="flex items-center gap-1.5 h-7 px-2 rounded bg-surface hover:bg-surface-light text-xs text-muted cursor-pointer select-none transition"
+              className="flex h-10 min-w-0 items-center justify-center gap-1.5 rounded bg-surface px-2 text-xs text-muted cursor-pointer select-none transition hover:bg-surface-light sm:h-7"
               title="Show/hide TODOs"
             >
               <input
@@ -1345,7 +1357,7 @@ export default function CodeEditor() {
               value={newTodoTag}
               onChange={(e) => setNewTodoTag(e.target.value)}
               title="Comment tag"
-              className="h-7 w-16 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary"
+              className="h-10 w-full min-w-0 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary sm:h-7 sm:w-16"
             >
               {TODO_TAGS.map((tag) => (
                 <option key={tag} value={tag}>
@@ -1357,17 +1369,17 @@ export default function CodeEditor() {
             <button
               type="button"
               onClick={handleAddTodoComment}
-              className="h-7 w-7 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition"
+              className="h-10 w-10 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition sm:h-7 sm:w-7"
               title="Add comment with selected text"
             >
               <MessageSquarePlus className="h-3.5 w-3.5" />
             </button>
 
-            <div className="relative flex items-stretch" ref={publishMenuRef}>
+            <div className="relative col-span-3 flex min-w-0 items-stretch sm:col-auto" ref={publishMenuRef}>
               <button
                 type="submit"
                 disabled={isUploading}
-                className="h-7 px-3 bg-primary text-white text-xs font-medium rounded-l hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="h-10 min-w-0 flex-1 px-3 bg-primary text-white text-xs font-medium rounded-l hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:h-7 sm:flex-none"
               >
                 {isUploading
                   ? (isEditing ? 'Saving...' : 'Uploading...')
@@ -1394,7 +1406,7 @@ export default function CodeEditor() {
                     return !open;
                   });
                 }}
-                className="h-7 px-1.5 bg-primary text-white rounded-r border-l border-white/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="h-10 shrink-0 px-3 bg-primary text-white rounded-r border-l border-white/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:h-7 sm:px-1.5"
                 aria-label="Publish options"
                 aria-expanded={publishMenuOpen}
               >
@@ -1403,7 +1415,7 @@ export default function CodeEditor() {
               {publishMenuOpen && publishMenuPosition && (
                 <div
                   ref={menuRef}
-                  className="fixed w-48 rounded bg-surface border border-surface-light shadow-lg z-50 py-1"
+                  className="fixed z-50 w-[min(12rem,calc(100vw-1rem))] rounded bg-surface border border-surface-light py-1 shadow-lg"
                   style={{ right: publishMenuPosition.right, bottom: publishMenuPosition.bottom }}
                 >
                   <button
@@ -1443,6 +1455,7 @@ export default function CodeEditor() {
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
+          </div>
           </div>
         </div>
       </form>

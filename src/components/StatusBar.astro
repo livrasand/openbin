@@ -42,7 +42,7 @@ const authCommands: Command[] = curator
 const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle theme', href: '#', id: 'toggle-theme' }];
 ---
 
-<footer class="relative flex h-6 shrink-0 items-center justify-between border-t border-surface-light bg-surface px-3 text-[11px] font-mono text-muted">
+<footer class="relative flex min-h-6 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-surface-light bg-surface px-3 py-1 text-[11px] font-mono text-muted">
   <button
     type="button"
     id="command-trigger"
@@ -52,32 +52,6 @@ const commands: Command[] = [...baseCommands, ...authCommands, { label: 'toggle 
     <span class="text-main">{prompt}</span>
     <span class="animate-pulse text-primary">_</span>
   </button>
-
-  <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-    <button
-      type="button"
-      id="spaces-trigger"
-      class="text-[11px] font-medium text-primary hover:text-main hover:underline transition"
-      aria-haspopup="true"
-    >
-      spaces
-    </button>
-    <div
-      id="spaces-panel"
-      class="absolute bottom-full left-1/2 mb-1 hidden w-80 -translate-x-1/2 border border-surface-light bg-background p-3 shadow-lg text-left"
-    >
-      <h3 class="text-xs font-bold text-main mb-2">Spaces</h3>
-      <p class="text-[11px] text-muted mb-2 leading-relaxed">
-        Spaces are simple HTTP pub/sub channels for notifications, similar to ntfy but fully free and open source. Create a space by publishing to it.
-      </p>
-      <code class="block text-[10px] text-main bg-surface-light p-1.5 mb-2 whitespace-pre-wrap break-words">curl -d "Backup successful" https://openbin.livrasand.com/s/myspace</code>
-      <p class="text-[11px] text-muted mb-1">Create or join a space:</p>
-      <a href="/spaces" class="text-[11px] text-primary hover:underline">/spaces</a>
-      <p class="text-[11px] text-muted mt-2 mb-1">Example space:</p>
-      <a href="/s/myspace" class="text-[11px] text-primary hover:underline">/s/myspace</a>
-      <p class="text-[10px] text-muted mt-2">Web Push requires VAPID keys. Run <code class="bg-surface-light px-1">npx web-push generate-vapid-keys</code>.</p>
-    </div>
-  </div>
 
   <div class="flex items-center gap-2">
     {isSpace && (

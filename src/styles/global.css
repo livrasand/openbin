@@ -29,8 +29,34 @@
 }
 
 * {
+  box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--color-surface-light) var(--color-background);
+}
+
+html,
+body {
+  min-width: 0;
+  min-height: 100%;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
 }
 
 ::-webkit-scrollbar {
