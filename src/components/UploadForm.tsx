@@ -1271,7 +1271,7 @@ export default function CodeEditor() {
             <ChevronDown className={`h-4 w-4 transition-transform ${mobileOptionsOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          <div className={`${mobileOptionsOpen ? 'grid' : 'hidden'} gap-2 pt-2 sm:flex sm:min-w-0 sm:items-center sm:gap-1 sm:overflow-x-auto` }>
+          <div className={`${mobileOptionsOpen ? 'grid' : 'hidden'} gap-2 pt-2 sm:flex sm:min-w-0 sm:items-center sm:gap-1 sm:overflow-x-auto`}>
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:flex sm:shrink-0 sm:items-center sm:gap-1">
             <input
               type="text"
