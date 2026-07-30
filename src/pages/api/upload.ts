@@ -84,11 +84,13 @@ export async function POST(context: APIContext): Promise<Response> {
     const file = formData.get('file');
     const password = typeof formData.get('password') === 'string' ? (formData.get('password') as string).trim() : '';
     const expiresIn = typeof formData.get('expires_in') === 'string' ? (formData.get('expires_in') as string).trim() : '0';
-    const isPublic = formData.get('is_public') === 'true';
+    const visibility = typeof formData.get('visibility') === 'string' ? (formData.get('visibility') as string).trim() : 'public';
+    const isPublic = visibility === 'public';
+    const isPrivate = visibility === 'private';
     const forkedFrom = typeof formData.get('forked_from') === 'string' ? (formData.get('forked_from') as string).trim() || null : null;
     const curator = await getCurrentCurator(context.cookies);
 
-    if (!isPublic && !password) {
+    if (isPrivate && !password) {
       return jsonResponse({ error: 'A password is required for a private bin' }, 400);
     }
 
@@ -96,7 +98,7 @@ export async function POST(context: APIContext): Promise<Response> {
       return jsonResponse({ error: 'Login required to fork' }, 401);
     }
 
-    const passwordHash = isPublic ? null : hashPassword(password);
+    const passwordHash = isPrivate ? hashPassword(password) : null;
     const viewOnce = expiresIn === '-1';
     const expiresAt = viewOnce ? null : parseExpiresAt(expiresIn);
 
@@ -158,6 +160,7 @@ export async function POST(context: APIContext): Promise<Response> {
       score: 0,
       report_count: 0,
       hidden: false,
+      is_public: isPublic,
     });
 
     return jsonResponse(buildResponse(record, request, authorToken), 200, {

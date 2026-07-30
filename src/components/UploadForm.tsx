@@ -507,7 +507,7 @@ export default function CodeEditor() {
   const [author, setAuthor] = useState('');
   const [password, setPassword] = useState('');
   const [expiresIn, setExpiresIn] = useState('0');
-  const [publishPublic, setPublishPublic] = useState(false);
+  const [visibility, setVisibility] = useState<'public' | 'secret' | 'private'>('public');
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   const [publishMenuPosition, setPublishMenuPosition] = useState<{ right: number; bottom: number } | null>(null);
   const [showTodos, setShowTodos] = useState(true);
@@ -522,6 +522,7 @@ export default function CodeEditor() {
   const [curator, setCurator] = useState<{ username: string; karma: number; level: number } | null>(null);
   const [cdnFiles, setCdnFiles] = useState<File[]>([]);
   const [tabMenuOpen, setTabMenuOpen] = useState(false);
+  const [tabMenuPosition, setTabMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -533,11 +534,11 @@ export default function CodeEditor() {
   const publishMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const gutterRef = useRef<HTMLPreElement>(null);
-  const publishPublicRef = useRef(publishPublic);
+  const visibilityRef = useRef(visibility);
 
   useEffect(() => {
-    publishPublicRef.current = publishPublic;
-  }, [publishPublic]);
+    visibilityRef.current = visibility;
+  }, [visibility]);
 
   useEffect(() => {
     if (!publishMenuOpen) return;
@@ -736,9 +737,9 @@ export default function CodeEditor() {
   }, [tabs.length, isEditing]);
 
   const handleFileSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setCdnFiles((prev) => [...prev, ...Array.from(files)]);
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
+    setCdnFiles((prev) => [...prev, ...files]);
     e.target.value = '';
   }, []);
 
@@ -862,7 +863,7 @@ export default function CodeEditor() {
     setAuthor('');
     setPassword('');
     setExpiresIn('0');
-    setPublishPublic(false);
+    setVisibility('public');
     setForkFromUrl(null);
     setIsEditing(false);
     setEditSlug(null);
@@ -882,9 +883,9 @@ export default function CodeEditor() {
     setPassword(generatePassphrase());
   }, []);
 
-  const handlePublishOption = (value: boolean) => {
-    publishPublicRef.current = value;
-    setPublishPublic(value);
+  const handlePublishOption = (value: 'public' | 'secret' | 'private') => {
+    visibilityRef.current = value;
+    setVisibility(value);
     setPublishMenuOpen(false);
     formRef.current?.requestSubmit();
   };
@@ -929,9 +930,9 @@ export default function CodeEditor() {
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('password', publishPublicRef.current ? '' : password);
+        formData.append('password', visibilityRef.current === 'private' ? password : '');
         formData.append('expires_in', expiresIn);
-        formData.append('is_public', String(publishPublicRef.current));
+        formData.append('visibility', visibilityRef.current);
         formData.append('language', tab.language);
         if (forkedFromSlug) {
           formData.append('forked_from', forkedFromSlug);
@@ -955,9 +956,9 @@ export default function CodeEditor() {
         for (const file of cdnFiles) {
           const fileFormData = new FormData();
           fileFormData.append('file', file);
-          fileFormData.append('password', publishPublicRef.current ? '' : password);
+          fileFormData.append('password', visibilityRef.current === 'private' ? password : '');
           fileFormData.append('expires_in', expiresIn);
-          fileFormData.append('is_public', String(publishPublicRef.current));
+          fileFormData.append('visibility', visibilityRef.current);
           fileFormData.append('language', detectLanguage(file.name));
 
           const fileResponse = await fetch('/api/upload', {
@@ -1015,16 +1016,25 @@ export default function CodeEditor() {
           <button
             type="button"
             ref={tabMenuButtonRef}
-            onClick={() => setTabMenuOpen((open) => !open)}
+            onClick={() => {
+              setTabMenuOpen((open) => {
+                if (!open && tabMenuButtonRef.current) {
+                  const rect = tabMenuButtonRef.current.getBoundingClientRect();
+                  setTabMenuPosition({ top: rect.bottom + 4, left: rect.left });
+                }
+                return !open;
+              });
+            }}
             className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary hover:text-secondary transition"
             title="New tab"
           >
             <Plus className="h-4 w-4" />
           </button>
-          {tabMenuOpen && (
+          {tabMenuOpen && tabMenuPosition && (
             <div
               ref={tabMenuRef}
-              className="absolute top-full left-0 mt-1 w-48 rounded border border-surface-light bg-surface shadow-lg z-50 py-1"
+              className="fixed w-48 rounded border border-surface-light bg-surface shadow-lg z-50 py-1"
+              style={{ top: tabMenuPosition.top, left: tabMenuPosition.left }}
             >
               <button
                 type="button"
@@ -1053,9 +1063,10 @@ export default function CodeEditor() {
           type="file"
           ref={fileInputRef}
           onChange={handleFileSelect}
-          className="hidden"
+          className="sr-only"
           accept="*/*"
           multiple
+          tabIndex={-1}
         />
         <div className="ml-auto flex items-center gap-1">
           <button
@@ -1279,15 +1290,15 @@ export default function CodeEditor() {
                 type="text"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={isEditing}
-                placeholder="password"
-                title="Password"
+                disabled={isEditing || visibility !== 'private'}
+                placeholder={visibility === 'private' ? 'password' : '—'}
+                title={visibility === 'private' ? 'Password' : 'Only used for private bins'}
                 className="h-7 w-24 bg-surface rounded ounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={handleGeneratePassword}
-                disabled={isEditing}
+                disabled={isEditing || visibility !== 'private'}
                 className="h-7 w-7 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition disabled:opacity-50"
                 title="Generate password"
               >
@@ -1354,7 +1365,15 @@ export default function CodeEditor() {
                 disabled={isUploading}
                 className="h-7 px-3 bg-primary text-white text-xs font-medium rounded-l hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isUploading ? (isEditing ? 'Saving...' : 'Uploading...') : isEditing ? 'Save changes' : publishPublic ? 'Open public bin' : 'Open secret bin'}
+                {isUploading
+                  ? (isEditing ? 'Saving...' : 'Uploading...')
+                  : isEditing
+                    ? 'Save changes'
+                    : visibility === 'public'
+                      ? 'Open public bin'
+                      : visibility === 'secret'
+                        ? 'Open secret bin'
+                        : 'Open private bin'}
               </button>
               <button
                 type="button"
@@ -1385,19 +1404,27 @@ export default function CodeEditor() {
                 >
                   <button
                     type="button"
-                    onClick={() => handlePublishOption(false)}
-                    className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
-                  >
-                    <span>Open secret bin</span>
-                    {!publishPublic && <Check className="h-3.5 w-3.5 text-primary" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePublishOption(true)}
+                    onClick={() => handlePublishOption('public')}
                     className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
                   >
                     <span>Open public bin</span>
-                    {publishPublic && <Check className="h-3.5 w-3.5 text-primary" />}
+                    {visibility === 'public' && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePublishOption('secret')}
+                    className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
+                  >
+                    <span>Open secret bin</span>
+                    {visibility === 'secret' && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePublishOption('private')}
+                    className="w-full text-left px-3 py-2 text-xs text-main hover:bg-surface-light flex items-center justify-between"
+                  >
+                    <span>Open private bin</span>
+                    {visibility === 'private' && <Check className="h-3.5 w-3.5 text-primary" />}
                   </button>
                 </div>
               )}

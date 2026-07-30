@@ -27,6 +27,7 @@ export interface FileRecord {
   score: number;
   report_count: number;
   hidden: boolean;
+  is_public: boolean;
   created_at: string;
 }
 
@@ -155,6 +156,9 @@ export async function ensureSchema(): Promise<void> {
   await p.sql`UPDATE files SET report_count = COALESCE(report_count, 0), hidden = COALESCE(hidden, FALSE) WHERE report_count IS NULL OR hidden IS NULL`;
   await p.sql`ALTER TABLE files ALTER COLUMN report_count SET NOT NULL`;
   await p.sql`ALTER TABLE files ALTER COLUMN hidden SET NOT NULL`;
+  await p.sql`ALTER TABLE files ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE`;
+  await p.sql`UPDATE files SET is_public = TRUE WHERE is_public IS NULL`;
+  await p.sql`ALTER TABLE files ALTER COLUMN is_public SET NOT NULL`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_files_language ON files(language)`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_files_score ON files(score)`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_files_report_count ON files(report_count)`;
@@ -236,7 +240,7 @@ export async function ensureSchema(): Promise<void> {
 export async function findByHash(sha256: string): Promise<FileRecord | null> {
   await ensureSchema();
   // Only reuse public records for deduplication; private uploads must create a new bin.
-  const { rows } = await getPool().sql<FileRecord>`SELECT * FROM files WHERE sha256 = ${sha256} AND password_hash IS NULL AND hidden = FALSE LIMIT 1`;
+  const { rows } = await getPool().sql<FileRecord>`SELECT * FROM files WHERE sha256 = ${sha256} AND is_public = TRUE AND hidden = FALSE LIMIT 1`;
   return rows[0] ?? null;
 }
 
@@ -251,7 +255,7 @@ export async function listPublicFiles(limit = 30): Promise<FileRecord[]> {
   const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
   const { rows } = await getPool().sql<FileRecord>`
     SELECT * FROM files
-    WHERE password_hash IS NULL
+    WHERE is_public = TRUE
       AND hidden = FALSE
       AND (expires_at IS NULL OR expires_at > NOW())
     ORDER BY created_at DESC
@@ -265,11 +269,11 @@ export async function insertFile(
 ): Promise<FileRecord> {
   await ensureSchema();
   const { rows } = await getPool().sql<FileRecord>`
-    INSERT INTO files (slug, sha256, cid, filename, mime, size, author, password_hash, expires_at, view_once, author_token, forked_from, curator_id, language, score)
+    INSERT INTO files (slug, sha256, cid, filename, mime, size, author, password_hash, expires_at, view_once, author_token, forked_from, curator_id, language, score, is_public)
     VALUES (
       ${record.slug}, ${record.sha256}, ${record.cid}, ${record.filename}, ${record.mime}, ${record.size},
       ${record.author}, ${record.password_hash}, ${record.expires_at}, ${record.view_once}, ${record.author_token}, ${record.forked_from},
-      ${record.curator_id}, ${record.language}, ${record.score}
+      ${record.curator_id}, ${record.language}, ${record.score}, ${record.is_public}
     )
     RETURNING *
   `;
@@ -374,7 +378,7 @@ export async function listPublicFilesPopular(limit = 30): Promise<FileRecord[]> 
   const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
   const { rows } = await getPool().sql<FileRecord>`
     SELECT * FROM files
-    WHERE password_hash IS NULL
+    WHERE is_public = TRUE
       AND hidden = FALSE
       AND (expires_at IS NULL OR expires_at > NOW())
     ORDER BY score DESC, created_at DESC
@@ -390,7 +394,7 @@ export async function listPublicFilesTrending(limit = 30): Promise<FileRecord[]>
     SELECT *,
       COALESCE(score, 0) / POWER(EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600 + 2, 1.5) AS trending_score
     FROM files
-    WHERE password_hash IS NULL
+    WHERE is_public = TRUE
       AND hidden = FALSE
       AND (expires_at IS NULL OR expires_at > NOW())
     ORDER BY trending_score DESC
@@ -404,7 +408,7 @@ export async function listPublicFilesByLanguage(lang: string, limit = 30): Promi
   const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
   const { rows } = await getPool().sql<FileRecord>`
     SELECT * FROM files
-    WHERE password_hash IS NULL
+    WHERE is_public = TRUE
       AND hidden = FALSE
       AND (expires_at IS NULL OR expires_at > NOW())
       AND language = ${lang}
@@ -419,7 +423,7 @@ export async function getDistinctLanguages(): Promise<string[]> {
   const { rows } = await getPool().sql<{ language: string }>`
     SELECT DISTINCT language
     FROM files
-    WHERE password_hash IS NULL
+    WHERE is_public = TRUE
       AND hidden = FALSE
       AND (expires_at IS NULL OR expires_at > NOW())
       AND language IS NOT NULL
@@ -482,7 +486,7 @@ export async function getPublicBinsByCurator(
   const { rows } = await getPool().sql<FileRecord>`
     SELECT * FROM files
     WHERE curator_id = ${curatorId}
-      AND password_hash IS NULL
+      AND is_public = TRUE
       AND hidden = FALSE
       AND (expires_at IS NULL OR expires_at > NOW())
     ORDER BY created_at DESC
@@ -496,7 +500,7 @@ export async function countPublicBinsByCurator(curatorId: string): Promise<numbe
   const { rows } = await getPool().sql<{ count: number }>`
     SELECT COUNT(*)::int AS count FROM files
     WHERE curator_id = ${curatorId}
-      AND password_hash IS NULL
+      AND is_public = TRUE
       AND hidden = FALSE
       AND (expires_at IS NULL OR expires_at > NOW())
   `;

@@ -30,6 +30,7 @@ await pool.sql`
     view_once BOOLEAN DEFAULT FALSE,
     author_token CHAR(64),
     forked_from VARCHAR(12),
+    is_public BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )
 `;
@@ -48,6 +49,9 @@ await pool.sql`ALTER TABLE files ADD COLUMN IF NOT EXISTS hidden BOOLEAN DEFAULT
 await pool.sql`UPDATE files SET report_count = COALESCE(report_count, 0), hidden = COALESCE(hidden, FALSE) WHERE report_count IS NULL OR hidden IS NULL`;
 await pool.sql`ALTER TABLE files ALTER COLUMN report_count SET NOT NULL`;
 await pool.sql`ALTER TABLE files ALTER COLUMN hidden SET NOT NULL`;
+await pool.sql`ALTER TABLE files ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE`;
+await pool.sql`UPDATE files SET is_public = TRUE WHERE is_public IS NULL`;
+await pool.sql`ALTER TABLE files ALTER COLUMN is_public SET NOT NULL`;
 await pool.sql`CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256)`;
 await pool.sql`CREATE INDEX IF NOT EXISTS idx_files_expires_at ON files(expires_at)`;
 await pool.sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_files_author_token ON files(author_token)`;

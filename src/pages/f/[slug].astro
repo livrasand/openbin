@@ -7,6 +7,7 @@ import { getPublicURL } from '../../lib/utils';
 import { codeToHtml } from 'shiki';
 import { createHash } from 'node:crypto';
 import { getCurrentCurator } from '../../lib/auth';
+import { downloadFromFilebase } from '../../lib/filebase';
 
 const { slug } = Astro.params;
 if (typeof slug !== 'string' || slug.length === 0) {
@@ -39,35 +40,64 @@ if (!expired && record.password_hash && Astro.request.method === 'POST') {
 const directUrl = `https://ipfs.filebase.io/ipfs/${record.cid}`;
 let code = '';
 let html = '';
+let inlineDataUrl: string | null = null;
+
+function getRenderMode(mime: string, filename: string): 'image' | 'pdf' | 'video' | 'audio' | 'code' {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  if (mime === 'application/pdf') return 'pdf';
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) return 'image';
+  if (['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext)) return 'video';
+  if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) return 'audio';
+  if (ext === 'pdf') return 'pdf';
+  return 'code';
+}
+
+const renderMode = getRenderMode(record.mime, record.filename);
 
 if (!expired && unlocked) {
-  try {
-    const response = await fetch(directUrl);
-    if (response.ok) {
-      code = await response.text();
+  if (renderMode === 'code') {
+    try {
+      const response = await fetch(directUrl);
+      if (response.ok) {
+        code = await response.text();
+      }
+    } catch {
+      code = '';
     }
-  } catch {
-    code = '';
-  }
 
-  if (code && record.view_once) {
-    await markViewed(record.slug);
-  }
+    if (code && record.view_once) {
+      await markViewed(record.slug);
+    }
 
-  const ext = record.filename.split('.').pop()?.toLowerCase() || 'text';
-  function stripBackground(input: string): string {
-    return input.replace(/background-color:\s*[^;]+;?/gi, '');
-  }
-  try {
-    html = stripBackground(await codeToHtml(code, { lang: ext, theme: 'github-dark' }));
-  } catch {
-    html = stripBackground(await codeToHtml(code, { lang: 'text', theme: 'github-dark' }));
+    const ext = record.filename.split('.').pop()?.toLowerCase() || 'text';
+    function stripBackground(input: string): string {
+      return input.replace(/background-color:\s*[^;]+;?/gi, '');
+    }
+    try {
+      html = stripBackground(await codeToHtml(code, { lang: ext, theme: 'github-dark' }));
+    } catch {
+      html = stripBackground(await codeToHtml(code, { lang: 'text', theme: 'github-dark' }));
+    }
+  } else if (record.password_hash) {
+    try {
+      const body = await downloadFromFilebase(record.sha256);
+      inlineDataUrl = `data:${record.mime};base64,${body.toString('base64')}`;
+    } catch {
+      inlineDataUrl = null;
+    }
+    if (inlineDataUrl && record.view_once) {
+      await markViewed(record.slug);
+    }
   }
 }
 
 const base = getPublicURL(Astro.request);
 const publicUrl = `${base}/f/${record.slug}`;
 const rawUrl = `${base}/raw/${record.slug}`;
+const mediaSrc = record.password_hash ? (inlineDataUrl ?? '') : rawUrl;
 const embedCode = `<iframe src="${publicUrl}" width="100%" height="300" style="border:1px solid #e5e7eb; border-radius:4px;" title="${record.filename.replace(/"/g, '&quot;')}" loading="lazy"></iframe>`;
 
 const token = Astro.url.searchParams.get('token') || '';
@@ -350,9 +380,40 @@ function formatExpiry(value: string): string {
             Unlock
           </button>
         </form>
-      ) : html ? (
+      ) : (
         <div class="min-h-full flex flex-col gap-6 p-4 sm:p-6">
-          <div set:html={html}></div>
+          {renderMode === 'code' ? (
+            html ? (
+              <div set:html={html}></div>
+            ) : (
+              <div class="p-6 text-center text-muted">Could not load the content.</div>
+            )
+          ) : mediaSrc ? (
+            <div class="flex flex-col items-center gap-4">
+              {renderMode === 'image' && (
+                <img
+                  src={mediaSrc}
+                  alt={record.filename}
+                  class="max-h-full max-w-full object-contain"
+                />
+              )}
+              {renderMode === 'pdf' && (
+                <iframe
+                  src={mediaSrc}
+                  title={record.filename}
+                  class="h-[70vh] w-full border-0"
+                />
+              )}
+              {renderMode === 'video' && (
+                <video controls src={mediaSrc} class="max-w-full" />
+              )}
+              {renderMode === 'audio' && (
+                <audio controls src={mediaSrc} class="w-full" />
+              )}
+            </div>
+          ) : (
+            <div class="p-6 text-center text-muted">Could not load the content.</div>
+          )}
           <section class="border-t border-surface-light pt-6">
             <h2 class="mb-4 text-sm font-medium text-main">Comments ({flatComments.length})</h2>
             {curator ? (
@@ -393,8 +454,6 @@ function formatExpiry(value: string): string {
             </div>
           </section>
         </div>
-      ) : (
-        <div class="p-6 text-center text-muted">Could not load the content.</div>
       )}
     </div>
   </section>
