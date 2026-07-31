@@ -451,19 +451,22 @@ function renderIndentHtml(leading: string): string {
 }
 
 function highlightTodoInLine(text: string): string {
-  const tagPattern = TODO_TAGS.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const regex = new RegExp(`^(?://|#|;|--|/\\*|<!--)(\\s*)(${tagPattern})\\b(.*)$`);
+  // Construye un patrón que identifica los tags configurados (TODO, FIXME, BUG) en cualquier comentario.
+  const tagPattern = TODO_TAGS.map((t) => t.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')).join('|');
+  // Captura el prefijo del comentario (//, #, ;, --, /*, <!--), los espacios, el tag y el resto del texto.
+  const regex = new RegExp(`^(//|#|;|--|/\*|<!--)(\\s*)(${tagPattern})\\b(.*)$`);
   const m = text.match(regex);
   if (!m) return escapeHtml(text);
 
-  const marker = m[1];
-  const spaces = m[2];
-  const tag = m[3];
-  const rest = m[4];
+  const marker = m[1]; // Prefijo del comentario (//, #, <!--, etc.)
+  const spaces = m[2]; // Espacios después del prefijo
+  const tag = m[3]; // Tag detectado (TODO, FIXME, BUG)
+  const rest = m[4]; // Texto del comentario después del tag
+  // Color de fondo basado en el tag; si no está definido, usar gris claro.
   const color = TODO_COLORS[tag] || 'rgba(255,255,255,0.2)';
-  const todo = marker + spaces + tag + rest;
-
-  return `<span style="background-color:${color};color:var(--color-main);padding:0 2px;border-radius:2px;">${escapeHtml(todo)}</span>`;
+  const display = `${tag}:${rest}`; // Texto que se mostrará sin el prefijo del comentario (//, #, etc.)
+  // Renderiza el comentario resaltado sin los símbolos de comentario.
+  return `<span style="background-color:${color};padding:0 4px;border-radius:3px;font-weight:bold;display:inline-block;width:100%;">${escapeHtml(display)}</span>`;
 }
 
 function renderEditorOverlay(code: string, showTodos: boolean): string {
