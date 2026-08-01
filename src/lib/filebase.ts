@@ -1,4 +1,5 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 function getS3Client(): S3Client {
   const accessKeyId = process.env.FILEBASE_ACCESS_KEY;
@@ -87,4 +88,47 @@ export async function deleteFromFilebase(hash: string): Promise<void> {
   const client = getS3Client();
   const bucket = getBucket();
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: hash }));
+}
+
+// createPresignedPutUrl genera una URL firmada para subir un objeto directo a
+// Filebase (S3) sin pasar por la función serverless. La key es el sha256 del
+// contenido: así la subida es idempotente y deduplicable por objeto.
+export async function createPresignedPutUrl(
+  hash: string,
+  contentType: string,
+  expiresInSeconds = 900
+): Promise<string> {
+  const client = getS3Client();
+  const bucket = getBucket();
+  return getSignedUrl(
+    client,
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: hash,
+      ContentType: contentType,
+      Metadata: { source: 'gitgost' },
+    }),
+    { expiresIn: expiresInSeconds }
+  );
+}
+
+// createPresignedGetUrl genera una URL firmada de lectura (soporta Range
+// Requests nativamente en S3) para descargas resilientes con resume por bytes.
+export async function createPresignedGetUrl(hash: string, expiresInSeconds = 86400): Promise<string> {
+  const client = getS3Client();
+  const bucket = getBucket();
+  return getSignedUrl(
+    client,
+    new GetObjectCommand({ Bucket: bucket, Key: hash }),
+    { expiresIn: expiresInSeconds }
+  );
+}
+
+// getObjectInfo devuelve el CID IPFS y el tamaño de un objeto ya subido.
+export async function getObjectInfo(hash: string): Promise<{ cid: string | null; size: number | null }> {
+  const client = getS3Client();
+  const bucket = getBucket();
+  const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: hash }));
+  const size = head.ContentLength ?? null;
+  return { cid: extractCid(head.Metadata ?? {}) ?? null, size: size !== null ? Number(size) : null };
 }

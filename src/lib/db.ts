@@ -86,6 +86,17 @@ export interface FollowRecord {
   created_at: string;
 }
 
+export interface PendingUploadRecord {
+  token_hash: string;
+  sha256: string;
+  filename: string;
+  mime: string;
+  size: number;
+  expires_at: string | null;
+  presign_expires_at: string;
+  created_at: string;
+}
+
 let pool: VercelPool | undefined;
 let schemaEnsured = false;
 
@@ -280,6 +291,21 @@ export async function ensureSchema(): Promise<void> {
   `;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_curator_spaces_curator_id ON curator_spaces(curator_id)`;
 
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS pending_uploads (
+      token_hash CHAR(64) PRIMARY KEY,
+      sha256 CHAR(64) NOT NULL,
+      filename VARCHAR(255) NOT NULL,
+      mime VARCHAR(128) NOT NULL,
+      size BIGINT NOT NULL,
+      expires_at TIMESTAMPTZ,
+      presign_expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_pending_uploads_sha256 ON pending_uploads(sha256)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_pending_uploads_presign_expires_at ON pending_uploads(presign_expires_at)`;
+
   schemaEnsured = true;
 }
 
@@ -377,6 +403,58 @@ export async function markViewed(slug: string): Promise<void> {
     SET expires_at = NOW()
     WHERE slug = ${slug} AND view_once = TRUE AND expires_at IS NULL
   `;
+}
+
+export async function createPendingUpload(
+  record: Omit<PendingUploadRecord, 'created_at'>
+): Promise<PendingUploadRecord> {
+  await ensureSchema();
+  const { rows } = await getPool().sql<PendingUploadRecord>`
+    INSERT INTO pending_uploads (token_hash, sha256, filename, mime, size, expires_at, presign_expires_at)
+    VALUES (
+      ${record.token_hash}, ${record.sha256}, ${record.filename}, ${record.mime}, ${record.size},
+      ${record.expires_at}, ${record.presign_expires_at}
+    )
+    RETURNING *
+  `;
+  const row = rows[0];
+  if (!row) throw new Error('Could not create the pending upload');
+  return row;
+}
+
+export async function findPendingByToken(tokenHash: string): Promise<PendingUploadRecord | null> {
+  await ensureSchema();
+  const { rows } = await getPool().sql<PendingUploadRecord>`SELECT * FROM pending_uploads WHERE token_hash = ${tokenHash} LIMIT 1`;
+  return rows[0] ?? null;
+}
+
+export async function deletePendingByToken(tokenHash: string): Promise<void> {
+  await ensureSchema();
+  await getPool().sql`DELETE FROM pending_uploads WHERE token_hash = ${tokenHash}`;
+}
+
+// listExpiredFiles devuelve los bins con expiración vencida para limpieza física.
+export async function listExpiredFiles(limit = 100): Promise<FileRecord[]> {
+  await ensureSchema();
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 500);
+  const { rows } = await getPool().sql<FileRecord>`
+    SELECT * FROM files
+    WHERE expires_at IS NOT NULL AND expires_at <= NOW()
+    LIMIT ${safeLimit}
+  `;
+  return rows;
+}
+
+// deleteExpiredPending elimina los uploads pendientes cuya URL firmada ya venció.
+export async function deleteExpiredPending(): Promise<number> {
+  await ensureSchema();
+  const { rows } = await getPool().sql<{ count: number }>`
+    WITH deleted AS (
+      DELETE FROM pending_uploads WHERE presign_expires_at <= NOW() RETURNING 1
+    )
+    SELECT COUNT(*)::int as count FROM deleted
+  `;
+  return rows[0]?.count ?? 0;
 }
 
 export async function hasReported(slug: string, reporterHash: string): Promise<boolean> {

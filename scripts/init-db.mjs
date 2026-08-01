@@ -180,5 +180,20 @@ await pool.sql`
 `;
 await pool.sql`CREATE INDEX IF NOT EXISTS idx_space_subscriptions_space_name ON space_subscriptions(space_name)`;
 
+await pool.sql`
+  CREATE TABLE IF NOT EXISTS pending_uploads (
+    token_hash CHAR(64) PRIMARY KEY,
+    sha256 CHAR(64) NOT NULL,
+    filename VARCHAR(255) NOT NULL,
+    mime VARCHAR(128) NOT NULL,
+    size BIGINT NOT NULL,
+    expires_at TIMESTAMPTZ,
+    presign_expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`;
+await pool.sql`CREATE INDEX IF NOT EXISTS idx_pending_uploads_sha256 ON pending_uploads(sha256)`;
+await pool.sql`CREATE INDEX IF NOT EXISTS idx_pending_uploads_presign_expires_at ON pending_uploads(presign_expires_at)`;
+
 console.log('Database schema ready');
 process.exit(0);

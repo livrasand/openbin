@@ -29,6 +29,12 @@ export function getUploadMaxSize(): number {
   return Number(process.env.UPLOAD_MAX_SIZE ?? '5242880');
 }
 
+// getPresignMaxSize es el límite para subidas vía URL presignada (modo gitGost):
+// el archivo no pasa por la función serverless, así que puede ser mucho mayor.
+export function getPresignMaxSize(): number {
+  return Number(process.env.PRESIGN_UPLOAD_MAX_SIZE ?? '4294967296');
+}
+
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
