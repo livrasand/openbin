@@ -3,7 +3,7 @@ import { deleteExpiredPending, listExpiredFiles, deleteBySlug, countByHash } fro
 import { deleteFromFilebase } from '../../../lib/filebase';
 import { jsonResponse } from '../../../lib/utils';
 
-// GET /api/cron/cleanup — invocado por Vercel Cron cada hora. Libera los uploads
+// GET /api/cron/cleanup — invocado por Vercel Cron una vez al día (límite del plan Hobby). Libera los uploads
 // pendientes vencidos y borra físicamente (registro + objeto S3) los bins cuya
 // expiración ya pasó, sin tocar objetos que sigan referenciados por otros bins.
 export const GET: APIRoute = async ({ request }) => {
