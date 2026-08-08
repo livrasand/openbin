@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss/base.css";
+@import "tailwindcss/components.css";
+@import "tailwindcss/utilities.css";
 
 :root {
   --zen-paper: #f2f0e3;
@@ -46,6 +46,19 @@ input,
 select,
 textarea {
   touch-action: manipulation;
+}
+
+/* Selects: quita la apariencia nativa del navegador (que pinta border-radius
+   del sistema) y dibuja una flecha propia del lenguaje visual de openbin */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  border-radius: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 1.5rem;
 }
 
 @media (max-width: 640px) {
@@ -105,4 +118,13 @@ textarea {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
+}
+
+/* Editor JFORM (CreateForm): el <pre> interno de Shiki debe envolver las
+   líneas largas igual que el textarea, sin scrollbar horizontal */
+.jform-editor .shiki,
+.jform-editor .shiki code,
+.jform-editor .shiki-fallback {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }

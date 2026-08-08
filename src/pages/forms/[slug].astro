@@ -1,0 +1,12 @@
+---
+// Renderiza un bin de openbin como formulario JFORM.
+// URL: /forms/:slug  — el schema se carga desde /raw/:slug
+import FormsLayout from '../../layouts/FormsLayout.astro';
+import FormView from '../../components/forms/FormView.jsx';
+
+const { slug } = Astro.params;
+---
+
+<FormsLayout>
+  <FormView sourceUrl={`/raw/${slug}`} client:only="react" />
+</FormsLayout>

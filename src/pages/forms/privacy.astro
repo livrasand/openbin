@@ -1,0 +1,168 @@
+---
+import FormsLayout from '../../layouts/FormsLayout.astro';
+---
+
+<FormsLayout title="Privacy Policy - JFORM">
+  <div style="max-width: 720px; margin: 60px auto; padding: 0 24px 80px">
+    <a
+      href="/forms/"
+      style="
+        font-size: 0.85rem;
+        color: var(--text-2);
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 32px;
+      "
+    >
+      ← JFORM
+    </a>
+    <h1 style="font-size: 2rem; font-weight: 700; margin-bottom: 8px">
+      Privacy Policy
+    </h1>
+    <p
+      style="color: var(--text-2); font-size: 0.9rem; margin-bottom: 40px"
+    >
+      Last updated: June 2026
+    </p>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        1. Overview
+      </h2>
+      <p>
+        JFORM is a privacy-first, open-source form protocol. This policy
+        explains what data we handle, how, and why — in plain language.
+      </p>
+    </section>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        2. Data We Do NOT Collect
+      </h2>
+      <ul style="padding-left: 20px; line-height: 2">
+        <li>We do not store form responses.</li>
+        <li>We do not use tracking cookies or analytics.</li>
+        <li>We do not build user profiles.</li>
+        <li>We do not sell or share data with third parties.</li>
+      </ul>
+    </section>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        3. Email Relay
+      </h2>
+      <p>
+        When you register to use the email relay feature, we store your email
+        address and a generated token in our database (Neon/PostgreSQL hosted
+        on Vercel). This is used solely to route form responses to your inbox.
+      </p>
+      <p style="margin-top: 12px">
+        Form responses that pass through our relay are processed in memory and
+        immediately forwarded via Resend. They are never persisted to disk or
+        logged.
+      </p>
+    </section>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        4. File Attachments
+      </h2>
+      <p>
+        If a form includes a file upload field, the file is included as an
+        email attachment and forwarded directly to the form owner. JFORM does
+        not retain copies of uploaded files.
+      </p>
+    </section>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        5. PGP Encryption (Optional)
+      </h2>
+      <p>
+        If you register a PGP public key, form responses will be encrypted
+        before being relayed. Only you — with your private key — can decrypt
+        them. JFORM never has access to your private key.
+      </p>
+    </section>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        6. Form Content Responsibility
+      </h2>
+      <p>
+        Forms are created and owned by third-party developers who fork this
+        repository. JFORM is not responsible for the data collected by
+        individual forms. Always review a form before submitting your data. If
+        a form looks suspicious,{" "}
+        <a
+          href="https://github.com/livrasand/jform/issues"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="color: var(--accent)"
+        >
+          report it here
+        </a>
+        .
+      </p>
+    </section>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        7. Data Deletion
+      </h2>
+      <p>
+        To delete your email relay registration, open an issue at{" "}
+        <a
+          href="https://github.com/livrasand/jform"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="color: var(--accent)"
+        >
+          github.com/livrasand/jform
+        </a>{" "}
+        with your registered email address. We will remove your record within
+        7 days.
+      </p>
+    </section>
+
+    <section style="margin-bottom: 32px">
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        8. Infrastructure
+      </h2>
+      <ul style="padding-left: 20px; line-height: 2">
+        <li>
+          <strong>Hosting:</strong> Vercel (serverless functions + static
+          site)
+        </li>
+        <li>
+          <strong>Database:</strong> Neon (PostgreSQL) — stores only email
+          relay tokens
+        </li>
+        <li>
+          <strong>Email delivery:</strong> Resend — used only to forward relay
+          emails
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px">
+        9. Contact
+      </h2>
+      <p>
+        Questions about this policy? Open an issue at{" "}
+        <a
+          href="https://github.com/livrasand/jform"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="color: var(--accent)"
+        >
+          github.com/livrasand/jform
+        </a>
+        .
+      </p>
+    </section>
+  </div>
+</FormsLayout>

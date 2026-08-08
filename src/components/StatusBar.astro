@@ -6,6 +6,7 @@ const curator = await getCurrentCurator(Astro.cookies);
 function getPrompt(path: string): string {
   if (path === '/') return 'home';
   if (path.startsWith('/discover')) return 'discover';
+  if (path.startsWith('/forms')) return 'jforms';
   if (path.startsWith('/f/')) return 'bin';
   if (path.startsWith('/u/')) return 'user';
   if (path.startsWith('/karma')) return 'karma';
@@ -29,6 +30,8 @@ const baseCommands: Command[] = [
   { label: 'home', href: '/' },
   { label: 'discover', href: '/discover' },
   { label: 'spaces', href: '/spaces' },
+  { label: 'jforms', href: '/forms/create' },
+  { label: 'jform id', href: '/forms/register' },
   { label: 'karma', href: '/karma' },
 ];
 

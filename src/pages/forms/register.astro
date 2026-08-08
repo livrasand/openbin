@@ -1,0 +1,166 @@
+---
+// Página de registro del relay de email de JFORM dentro de Openbin.
+// El usuario registra su correo y recibe su JForm ID (token jf_...),
+// que se agrega a su archivo .jform como destination_id.
+// Usa la API local POST /api/register (openbin/src/pages/api/register.ts).
+import FormsLayout from '../../layouts/FormsLayout.astro';
+---
+
+<FormsLayout title="Get your JForm ID · openbin">
+  <section class="flex min-h-full flex-col items-center justify-center p-4 sm:p-6">
+    <div class="w-full max-w-sm border border-surface-light bg-surface p-6 shadow-sm">
+      <div class="mb-6 flex items-center gap-3">
+        <a href="/forms/create">
+          <img src="/favicon.svg" alt="" class="h-8 w-8" />
+        </a>
+        <div>
+          <h1 class="text-sm font-medium text-main">Get your JForm ID</h1>
+          <p class="text-xs text-muted">Register your email to receive a relay token.</p>
+        </div>
+      </div>
+
+      <form id="register-form" class="flex flex-col gap-3">
+        <div>
+          <label class="mb-1 block text-xs text-muted">Your email *</label>
+          <input
+            type="email"
+            name="email"
+            id="email"
+            placeholder="you@email.com"
+            required
+            class="h-8 w-full border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+          />
+          <p class="mt-1 text-[10px] text-muted">You will receive form submissions at this address.</p>
+        </div>
+
+        <div>
+          <label class="mb-1 block text-xs text-muted">GitHub username (optional)</label>
+          <input
+            type="text"
+            name="github"
+            id="github"
+            placeholder="your-username"
+            class="h-8 w-full border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+          />
+          <p class="mt-1 text-[10px] text-muted">To identify your account and facilitate collaboration.</p>
+        </div>
+
+        <div>
+          <label class="mb-1 block text-xs text-muted">PGP public key (optional)</label>
+          <textarea
+            name="pgp_public_key"
+            id="pgp"
+            rows="4"
+            placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"
+            class="w-full resize-y border border-surface-light bg-background px-3 py-2 font-mono text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+          ></textarea>
+          <p class="mt-1 text-[10px] text-muted">If added, the emails you receive will be end-to-end encrypted.</p>
+        </div>
+
+        <button
+          type="submit"
+          id="submit-btn"
+          class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Get token
+        </button>
+
+        <p id="error" class="hidden text-xs text-red-400"></p>
+      </form>
+
+      <div id="success" class="hidden flex-col gap-3">
+        <div class="rounded border border-primary/30 bg-primary/10 p-3">
+          <p class="mb-1 text-xs font-medium text-primary">Your JForm ID (relay token)</p>
+          <p class="text-[10px] text-muted">Add it to your .jform file as destination_id to enable the email relay.</p>
+          <div class="mt-2 flex items-center gap-2">
+            <input
+              id="token-display"
+              type="text"
+              readonly
+              class="h-8 flex-1 border border-surface-light bg-background px-2 font-mono text-xs text-main focus:outline-none"
+            />
+            <button
+              id="copy-btn"
+              type="button"
+              class="h-8 border border-surface-light bg-surface px-3 text-xs text-main transition-colors hover:bg-surface-light"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+        <a
+          href="/forms/create"
+          class="h-8 border border-primary bg-primary px-3 py-2 text-center text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Go to JForms
+        </a>
+      </div>
+
+      <p class="mt-4 text-center text-[10px] text-muted">
+        Already have a token? <a href="/forms/create" class="text-primary hover:underline">Create a form</a>
+      </p>
+    </div>
+  </section>
+</FormsLayout>
+
+<script>
+  const form = document.getElementById('register-form');
+  const errorEl = document.getElementById('error');
+  const successEl = document.getElementById('success');
+  const tokenInput = document.getElementById('token-display') as HTMLInputElement | null;
+  const copyBtn = document.getElementById('copy-btn');
+  const submitBtn = document.getElementById('submit-btn');
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!submitBtn) return;
+      submitBtn.setAttribute('disabled', 'true');
+      submitBtn.textContent = 'Getting...';
+      if (errorEl) errorEl.classList.add('hidden');
+
+      const formData = new FormData(form as HTMLFormElement);
+      const email = String(formData.get('email') || '').trim();
+      const github = String(formData.get('github') || '').trim() || null;
+      const pgp_public_key = String(formData.get('pgp_public_key') || '').trim() || null;
+
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, github, pgp_public_key }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Could not get token');
+        }
+
+        if (tokenInput) tokenInput.value = data.token || '';
+        if (successEl) {
+          successEl.classList.remove('hidden');
+          successEl.classList.add('flex');
+        }
+        form.classList.add('hidden');
+      } catch (err: unknown) {
+        if (errorEl) {
+          errorEl.textContent = err instanceof Error ? err.message : 'Could not get token';
+          errorEl.classList.remove('hidden');
+        }
+      } finally {
+        submitBtn.removeAttribute('disabled');
+        submitBtn.textContent = 'Get token';
+      }
+    });
+  }
+
+  if (copyBtn && tokenInput) {
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(tokenInput.value);
+        copyBtn.textContent = 'Copied';
+      } catch {
+        // ignore
+      }
+    });
+  }
+</script>

@@ -122,6 +122,7 @@ function formatDate(value: string): string {
           {files.map((file) => {
             const upvoted = userVotes[file.slug] === 1;
             const downvoted = userVotes[file.slug] === -1;
+            const isForm = file.filename.toLowerCase().endsWith('.jform');
             return (
               <article class="group flex flex-col border border-surface-light bg-surface p-4 transition-colors hover:border-primary/60 hover:bg-surface-light">
                 <a href={`/f/${file.slug}`} class="block flex-1">
@@ -177,7 +178,17 @@ function formatDate(value: string): string {
                       ▼
                     </button>
                   </div>
-                  {file.language && <span class="text-[10px] text-muted">{file.language}</span>}
+                  <div class="flex items-center gap-2">
+                    {isForm && (
+                      <a
+                        href={`/forms/${file.slug}`}
+                        class="flex h-6 items-center border border-primary bg-primary px-2 text-[10px] font-medium text-white transition-colors hover:bg-primary/90"
+                      >
+                        Open form
+                      </a>
+                    )}
+                    {file.language && <span class="text-[10px] text-muted">{file.language}</span>}
+                  </div>
                   {file.report_count >= 3 && (
                     <span
                       class="inline-flex shrink-0 items-center border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"

@@ -1225,14 +1225,14 @@ export default function CodeEditor() {
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-100 p-3 shrink-0">
+          <div className="flex items-start gap-2 border border-red-500/30 bg-red-500/10 text-red-100 p-3 shrink-0">
             <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
             <p>{error}</p>
           </div>
         )}
 
         {results.length > 0 && (
-          <div className="shrink-0 max-h-48 overflow-y-auto rounded-lg border border-surface-light bg-surface p-4 gap-4 flex flex-col">
+          <div className="shrink-0 max-h-48 overflow-y-auto border border-surface-light bg-surface p-4 gap-4 flex flex-col">
             <h2 className="text-base font-semibold text-main">Uploaded files</h2>
             {results.map((result) => (
               <div key={result.slug} className="space-y-2 border-b border-surface-light last:border-0 pb-3 last:pb-0">
@@ -1267,7 +1267,7 @@ export default function CodeEditor() {
           <button
             type="button"
             onClick={() => setMobileOptionsOpen((open) => !open)}
-            className="flex h-10 w-full items-center justify-between rounded bg-surface-light px-3 text-xs font-medium text-main sm:hidden"
+            className="flex h-10 w-full items-center justify-between bg-surface-light px-3 text-xs font-medium text-main sm:hidden"
             aria-expanded={mobileOptionsOpen}
           >
             <span>File and publish options</span>
@@ -1282,13 +1282,13 @@ export default function CodeEditor() {
               onChange={(e) => handleFilenameChange(activeTab.id, e.target.value)}
               placeholder="Main"
               title="Filename"
-              className="h-9 w-full min-w-0 bg-surface rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary sm:h-7 sm:w-24"
+              className="h-9 w-full min-w-0 bg-surface px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary sm:h-7 sm:w-24"
             />
             <select
               value={activeTab.language}
               onChange={(e) => handleLanguageChange(activeTab.id, e.target.value)}
               title="Language"
-              className="h-9 w-full min-w-0 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary sm:h-7 sm:w-24"
+              className="h-9 w-full min-w-0 bg-surface px-1 text-xs text-main focus:outline-none focus:border-secondary sm:h-7 sm:w-24"
             >
               {['text', ...COMMON_LANGUAGES].map((lang) => (
                 <option key={lang} value={lang}>
@@ -1312,13 +1312,13 @@ export default function CodeEditor() {
                 disabled={isEditing || visibility !== 'private'}
                 placeholder={visibility === 'private' ? 'password' : '—'}
                 title={visibility === 'private' ? 'Password' : 'Only used for private bins'}
-                className="h-9 w-full min-w-0 bg-surface rounded px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary disabled:opacity-50 sm:h-7 sm:w-24"
+                className="h-9 w-full min-w-0 bg-surface px-2 text-xs text-main placeholder:text-muted focus:outline-none focus:border-secondary disabled:opacity-50 sm:h-7 sm:w-24"
               />
               <button
                 type="button"
                 onClick={handleGeneratePassword}
                 disabled={isEditing || visibility !== 'private'}
-                className="h-9 w-9 shrink-0 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition disabled:opacity-50 sm:h-7 sm:w-7"
+                className="h-9 w-9 shrink-0 flex items-center justify-center text-muted hover:text-main hover:bg-surface-light transition disabled:opacity-50 sm:h-7 sm:w-7"
                 title="Generate password"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -1329,7 +1329,7 @@ export default function CodeEditor() {
               onChange={(e) => setExpiresIn(e.target.value)}
               disabled={isEditing}
               title="Expiration"
-              className="h-9 w-full min-w-0 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary disabled:opacity-50 sm:h-7 sm:w-32"
+              className="h-9 w-full min-w-0 bg-surface px-1 text-xs text-main focus:outline-none focus:border-secondary disabled:opacity-50 sm:h-7 sm:w-32"
             >
               {EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={String(option.value)}>
@@ -1343,7 +1343,7 @@ export default function CodeEditor() {
 
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:ml-auto sm:flex sm:shrink-0 sm:items-center sm:gap-1">
             <label
-              className="flex h-10 min-w-0 items-center justify-center gap-1.5 rounded bg-surface px-2 text-xs text-muted cursor-pointer select-none transition hover:bg-surface-light sm:h-7"
+              className="flex h-10 min-w-0 items-center justify-center gap-1.5 bg-surface px-2 text-xs text-muted cursor-pointer select-none transition hover:bg-surface-light sm:h-7"
               title="Show/hide TODOs"
             >
               <input
@@ -1360,7 +1360,7 @@ export default function CodeEditor() {
               value={newTodoTag}
               onChange={(e) => setNewTodoTag(e.target.value)}
               title="Comment tag"
-              className="h-10 w-full min-w-0 bg-surface rounded px-1 text-xs text-main focus:outline-none focus:border-secondary sm:h-7 sm:w-16"
+              className="h-10 w-full min-w-0 bg-surface px-1 text-xs text-main focus:outline-none focus:border-secondary sm:h-7 sm:w-16"
             >
               {TODO_TAGS.map((tag) => (
                 <option key={tag} value={tag}>
@@ -1372,7 +1372,7 @@ export default function CodeEditor() {
             <button
               type="button"
               onClick={handleAddTodoComment}
-              className="h-10 w-10 flex items-center justify-center rounded text-muted hover:text-main hover:bg-surface-light transition sm:h-7 sm:w-7"
+              className="h-10 w-10 flex items-center justify-center text-muted hover:text-main hover:bg-surface-light transition sm:h-7 sm:w-7"
               title="Add comment with selected text"
             >
               <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -1382,7 +1382,7 @@ export default function CodeEditor() {
               <button
                 type="submit"
                 disabled={isUploading}
-                className="h-10 min-w-0 flex-1 px-3 bg-primary text-white text-xs font-medium rounded-l hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:h-7 sm:flex-none"
+                className="h-10 min-w-0 flex-1 px-3 bg-primary text-white text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:h-7 sm:flex-none"
               >
                 {isUploading
                   ? (isEditing ? 'Saving...' : 'Uploading...')
@@ -1409,7 +1409,7 @@ export default function CodeEditor() {
                     return !open;
                   });
                 }}
-                className="h-10 shrink-0 px-3 bg-primary text-white rounded-r border-l border-white/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:h-7 sm:px-1.5"
+                className="h-10 shrink-0 px-3 bg-primary text-white border-l border-white/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:h-7 sm:px-1.5"
                 aria-label="Publish options"
                 aria-expanded={publishMenuOpen}
               >
@@ -1418,7 +1418,7 @@ export default function CodeEditor() {
               {publishMenuOpen && publishMenuPosition && (
                 <div
                   ref={menuRef}
-                  className="fixed z-50 w-[min(12rem,calc(100vw-1rem))] rounded bg-surface border border-surface-light py-1 shadow-lg"
+                  className="fixed z-50 w-[min(12rem,calc(100vw-1rem))] bg-surface border border-surface-light py-1 shadow-lg"
                   style={{ right: publishMenuPosition.right, bottom: publishMenuPosition.bottom }}
                 >
                   <button
@@ -1452,7 +1452,7 @@ export default function CodeEditor() {
               <button
                 type="button"
                 onClick={resetEditor}
-                className="h-7 w-7 flex items-center justify-center rounded border border-surface-light text-muted hover:bg-surface-light hover:text-main transition-colors"
+                className="h-7 w-7 flex items-center justify-center border border-surface-light text-muted hover:bg-surface-light hover:text-main transition-colors"
                 title="Clear"
               >
                 <X className="h-3.5 w-3.5" />

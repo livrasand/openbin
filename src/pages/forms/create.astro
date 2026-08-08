@@ -1,0 +1,8 @@
+---
+import FormsLayout from '../../layouts/FormsLayout.astro';
+import CreateForm from '../../components/forms/CreateForm.jsx';
+---
+
+<FormsLayout title="Crear formulario · openbin">
+  <CreateForm client:only="react" />
+</FormsLayout>

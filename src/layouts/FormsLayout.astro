@@ -1,0 +1,20 @@
+---
+// Layout de la app de formularios (JFORM) dentro de Openbin.
+// Reutiliza el Layout de Openbin (StatusBar, theme dark/light, global.css)
+// para que jforms se sienta parte de openbin. jform.css queda solo para
+// el renderizado de formularios (.form-wrap, .field-group, etc.).
+import Layout from './Layout.astro';
+import '../styles/jform.css';
+
+export interface Props {
+  title?: string;
+}
+
+const { title = 'Openbin · JForms' } = Astro.props;
+---
+
+<Layout title={title}>
+  <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <slot />
+  </div>
+</Layout>

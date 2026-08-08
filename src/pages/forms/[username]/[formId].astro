@@ -1,0 +1,12 @@
+---
+// Ruta dinámica del motor de renderizado de formularios .jform
+// URL: /forms/:username/:formId  (ej. /forms/livrasand/contact)
+import FormsLayout from '../../../layouts/FormsLayout.astro';
+import FormView from '../../../components/forms/FormView.jsx';
+
+const { username, formId } = Astro.params;
+---
+
+<FormsLayout>
+  <FormView username={username} formId={formId} client:only="react" />
+</FormsLayout>
