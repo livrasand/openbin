@@ -29,7 +29,7 @@ Thank you for following my "attempts" to contribute something "useful" to the wo
 [![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=Check%20out%20this%20project%20on%20GitHub:%20https://github.com/livrasand/openbin)
 [![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/livrasand/openbin&text=Check%20out%20this%20project%20on%20GitHub)
 
-Be a ghost. Fix the internet.
+Share freely. Keep your privacy.
 
 *✨ Thanks for visiting **Openbin**!*
 
