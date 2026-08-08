@@ -17,6 +17,8 @@ Zero accounts • Zero telemetry • IPFS storage • Built for privacy
 
 ---
 
+Openbin is a simple way to share and fork snippets and pastes with others, a free content delivery network for Javascript, CSS, images and any file, and a service to send notifications from any Bash or PowerShell script, or from your own app using PUT/POST requests and receiving (via browser).
+
 This project, once again, stems from a personal need. I know most of my projects are like this, but this one in particular sought something simple that could store my files in any programming language or format and be open, account-free, telemetry-free, and available as a CDN. Considering the costs of a dedicated server, I chose IPFS so that the only limit is the community, even if the main domain, livrasand.com, were to cease to exist at some point. I carried out this project largely—over 90%—with Claude's help, so you'll probably find some "vibe coding". In that regard, I don't have much to say; I was just looking for something quick that would meet my needs so I could move on to another project.
 
 Thank you for following my "attempts" to contribute something "useful" to the world. Feel free to contribute, open issues, and submit PRs. I really appreciate it. Thanks to you, I feel like I'm slowly fulfilling my mission to leave my mark on the world (even if, in this case, it's starting with creative programming, lol). Thanks again, and I hope you find Openbin useful.
