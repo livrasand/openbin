@@ -24,6 +24,7 @@
     "@vercel/postgres": "^0.10.0",
     "astro": "^5.4.0",
     "lucide-react": "^0.475.0",
+    "marked": "^15.0.0",
     "mime": "^4.0.6",
     "nanoid": "^5.1.0",
     "openpgp": "^6.3.1",

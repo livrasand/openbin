@@ -1,0 +1,862 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import MarkdownPreview from '../../components/MarkdownPreview.jsx';
+import { marked } from 'marked';
+import { findBlog, getBlogPosts, validateBlogName } from '../../lib/blogs';
+import { getCurrentCurator } from '../../lib/auth';
+
+const { name } = Astro.params;
+const blogName = typeof name === 'string' ? name : '';
+const isValid = validateBlogName(blogName);
+const blog = isValid ? await findBlog(blogName) : null;
+const posts = blog ? await getBlogPosts(blogName, undefined, 20) : [];
+const currentCurator = await getCurrentCurator(Astro.cookies);
+const currentUser = currentCurator ? { id: currentCurator.id, username: currentCurator.username } : null;
+
+const renderedPosts = await Promise.all(
+  posts.map(async (post) => ({
+    ...post,
+    html: await marked.parse(post.content),
+  }))
+);
+---
+
+<Layout title={blog?.title ? `${blog.title} · openbin` : `${blogName} · openbin`}>
+  <section class="flex-1 flex flex-col overflow-hidden p-4">
+    <div class="max-w-2xl w-full mx-auto flex flex-col h-full gap-4">
+      <header class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-main">/{blogName}</h1>
+          {blog?.title && <p class="text-sm text-muted">{blog.title}</p>}
+          {blog?.description && <p class="text-xs text-muted">{blog.description}</p>}
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            data-report-blog
+            class="hidden h-8 border border-surface-light bg-surface px-3 text-xs text-muted transition hover:text-main"
+          >
+            Report
+          </button>
+          <button
+            type="button"
+            id="new-post-btn"
+            class="hidden h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary/90"
+          >
+            New post
+          </button>
+        </div>
+      </header>
+
+      {!isValid && (
+        <div class="text-sm text-main bg-red-500/10 border border-red-500/30 p-3">
+          Invalid blog name. Use 3–64 letters, numbers, underscores or dashes.
+        </div>
+      )}
+
+      {isValid && !blog && (
+        <div class="text-sm text-main bg-surface border border-surface-light p-4">
+          <p class="font-medium">This blog does not exist yet.</p>
+          <p class="text-xs text-muted mt-1">Create it from <a href="/spaces" class="text-primary hover:underline">/spaces</a>.</p>
+        </div>
+      )}
+
+      <div
+        id="posts"
+        class="flex-1 overflow-y-auto border border-surface-light bg-surface p-3 min-h-0"
+      >
+        {renderedPosts.length === 0 && blog && (
+          <div id="empty" class="flex h-full flex-col items-center justify-center gap-2 text-center">
+            <div class="flex h-10 w-10 items-center justify-center border border-surface-light bg-surface text-muted">∅</div>
+            <p class="text-sm font-medium text-main">No posts yet</p>
+            <p class="text-xs text-muted">Write the first post.</p>
+          </div>
+        )}
+
+        {renderedPosts.map((post) => (
+          <article class="border border-surface-light bg-background shadow-sm p-4 mb-3" data-id={post.id} data-curator={post.curator_id ?? ''}>
+            <div class="flex items-start justify-between gap-3 mb-2">
+              <div>
+                <h2 class="text-lg font-bold text-main">{post.title}</h2>
+                <p class="text-[10px] text-muted">
+                  by <span class="text-main">{post.author}</span> · <time>{new Date(post.created_at).toLocaleString()}</time>
+                </p>
+              </div>
+              <div class="flex gap-1">
+                <button
+                  type="button"
+                  data-report={post.id}
+                  data-report-type="post"
+                  class="h-6 border border-surface-light bg-surface px-2 text-[10px] text-muted transition hover:text-main"
+                >
+                  Report
+                </button>
+                {currentUser?.id === post.curator_id && (
+                  <>
+                    <button
+                      type="button"
+                      data-edit-post={post.id}
+                      class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      data-delete-post={post.id}
+                      class="h-6 border border-red-500/30 bg-red-500/10 px-2 text-[10px] text-red-400 transition hover:bg-red-500/20"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            <div class="markdown text-main break-words" set:html={post.html} />
+
+            <div class="mt-3 flex items-center gap-2 border-t border-surface-light pt-2">
+              <div class="reactions flex gap-1" data-post={post.id}>
+                <button
+                data-reaction={post.id}
+                data-type="like"
+                  type="button"
+                  class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light"
+                  title="Like"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 32 32">
+	<path d="M0 0h32v32H0z" fill="none" />
+	<g fill="none">
+		<path fill="#FFC83D" d="M12.313 5.531c0-2.9 2.124-3.583 3.312-3.562c2.413 0 3.082 2.009 3.281 3.078c.248 1.33.006 4.509-.106 5.969l-.003.041a2.3 2.3 0 0 1 .515-.057h3.858c1.56 0 2.83 1.27 2.83 2.83c0 .806-.259 1.535-.765 2.05c1.044.461 1.765 1.428 1.765 2.544c0 1.023-.463 1.92-1.364 2.418c.823.511 1.364 1.366 1.364 2.332c0 1.107-.543 2.069-1.598 2.533c.375.386.598.96.598 1.794c0 1.38-.969 2.502-2.83 2.502h-3.858q-.068 0-.134-.003h-3.131C5.609 30.172 5 23.406 5 20.656c0-5.156 2.298-6.689 4.34-8.051c.966-.644 1.875-1.25 2.457-2.183c.488-.783.515-1.5.515-4.89" />
+		<path fill="#D67D00" d="M19 11c-1.02.031-4 .594-4 2.969c0 1.25.469 1.953 1.031 2.344c-.562.25-1.062 1.178-1.062 2.328c0 1.28 1.062 2.218 1.062 2.218s-1.062 1.032-1.062 2.266c0 .932.408 1.62 1.062 2.088c-.354.2-1.062.893-1.062 2.068c0 1.401 1.308 2.575 3.87 2.68c-1.248-.231-1.855-1.375-1.855-2.46c0-.358.134-.934.467-1.442H23a.5.5 0 0 0 0-1h-5.411c-.405-.53-.605-1.218-.605-1.885c0-.416.157-1.088.546-1.674H23a.5.5 0 0 0 0-1h-5.25c-.513-.55-.766-1.325-.766-2.076c0-.357.116-.905.396-1.424H23a.5.5 0 0 0 0-1h-5.173c-.564-.597-.843-1.484-.843-2.17c0-.81.443-2.6 2.016-2.81z" />
+	</g>
+</svg> <span class="reaction-count" data-type="like">0</span>
+                </button>
+                <button
+                data-reaction={post.id}
+                data-type="love"
+                  type="button"
+                  class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light"
+                  title="Love"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 32 32">
+	<path d="M0 0h32v32H0z" fill="none" />
+	<g fill="none">
+		<path fill="#F8312F" d="M6 6c4.665-2.332 8.5.5 10 2.5c1.5-2 5.335-4.832 10-2.5c6 3 4.5 10.5 0 15c-2.196 2.196-6.063 6.063-8.891 8.214a1.764 1.764 0 0 1-2.186-.041C12.33 27.08 8.165 23.165 6 21C1.5 16.5 0 9 6 6" />
+		<path fill="#CA0B4A" d="M16 8.5v3.05c1.27-2.685 4.425-6.27 9.658-5.713c-4.51-2.03-8.195.712-9.658 2.663m-4.054-2.963C10.26 4.95 8.225 4.887 6 6C0 9 1.5 16.5 6 21c2.165 2.165 6.33 6.08 8.923 8.173a1.764 1.764 0 0 0 2.186.04q.381-.29.785-.618c-2.854-2.143-6.86-5.519-9.035-7.462c-4.957-4.431-6.61-11.815 0-14.769a9.7 9.7 0 0 1 3.087-.827" />
+		<ellipse cx="23.477" cy="12.594" fill="#F37366" rx="2.836" ry="4.781" transform="rotate(30 23.477 12.594)" />
+	</g>
+</svg> <span class="reaction-count" data-type="love">0</span>
+                </button>
+                <button
+                data-reaction={post.id}
+                data-type="fire"
+                  type="button"
+                  class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light"
+                  title="Fire"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 32 32">
+	<path d="M0 0h32v32H0z" fill="none" />
+	<g fill="none">
+		<path fill="#FF6723" d="M26 19.34c0 6.1-5.05 11.005-11.15 10.641c-6.269-.374-10.56-6.403-9.752-12.705c.489-3.833 2.286-7.12 4.242-9.67c.34-.445.689 3.136 1.038 2.742c.35-.405 3.594-6.019 4.722-7.991a.694.694 0 0 1 1.028-.213C18.394 3.854 26 10.277 26 19.34" />
+		<path fill="#FFB02E" d="M23 21.851c0 4.042-3.519 7.291-7.799 7.144c-4.62-.156-7.788-4.384-7.11-8.739C9.07 14.012 15.48 10 15.48 10S23 14.707 23 21.851" />
+	</g>
+</svg> <span class="reaction-count" data-type="fire">0</span>
+                </button>
+                <button
+                data-reaction={post.id}
+                data-type="rocket"
+                  type="button"
+                  class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light"
+                  title="Rocket"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 32 32">
+	<path d="M0 0h32v32H0z" fill="none" />
+	<g fill="none">
+		<path fill="#CA0B4A" d="M29.2 2.95c-.947-.947-2.7-.998-3.818-.425c-.913.314-1.874.667-2.854 1.063l.01.01c-2.575 1.095-6.427 3.04-9.51 5.902c-2.164 2.01-3.404 3.556-4.235 4.965l-5.298 1.95a1 1 0 0 0-.362 1.646l11.138 11.137a1 1 0 0 0 1.645-.362l2.204-5.986c1.608-.958 3.223-2.165 4.908-3.85c2.39-2.39 4.366-6.56 5.513-9.357l.009.008c.4-.99.758-1.961 1.074-2.883c.573-1.118.74-2.654-.424-3.818" />
+		<path fill="#F4F4F4" d="M23.299 4.365c-2.517 1.04-6.478 2.978-9.59 5.868c-2.015 1.87-3.172 3.294-3.94 4.55c-.769 1.255-1.175 2.38-1.663 3.74l-.002.007c-.17.474-.35.977-.559 1.514l4.556 4.556c3.602-1.48 6.74-2.828 10.22-6.307c2.351-2.352 4.339-6.642 5.454-9.421z" />
+		<path fill="#9B9B9B" d="M24.528 11.25a3.25 3.25 0 1 1-6.5 0a3.25 3.25 0 0 1 6.5 0" />
+		<path fill="#83CBFF" d="M23.528 11.25a2.25 2.25 0 1 1-4.5 0a2.25 2.25 0 0 1 4.5 0" />
+		<path fill="#FF8257" d="M2.451 29.61C1.744 28.905 2.028 24 4.528 23c0 0 2.5-1 4.11.6c1.612 1.601.89 3.4.89 3.4c-.707 2.121-3.718 2.965-4.071 2.61c-.195-.194.156-.55 0-.706c-.157-.157-.398.022-1.06.353c-.472.236-1.663.637-1.946.354" />
+		<path fill="#533566" d="M6.088 21.06a1.5 1.5 0 0 1 2.122 0l3.535 3.536a1.5 1.5 0 1 1-2.121 2.122l-3.536-3.536a1.5 1.5 0 0 1 0-2.121" />
+		<path fill="#F92F60" d="M15.535 18.722c.442-1.2-.725-2.368-1.926-1.926l-7.114 2.619a1 1 0 0 0-.362 1.646l5.138 5.137a1 1 0 0 0 1.645-.362z" />
+	</g>
+</svg> <span class="reaction-count" data-type="rocket">0</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                data-toggle-comments={post.id}
+                class="ml-auto h-6 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light"
+              >
+                Comments <span class="comment-count" data-post={post.id}>0</span>
+              </button>
+            </div>
+
+            <div class="comments-section hidden mt-3 border-t border-surface-light pt-2" data-comments={post.id}>
+              <div class="comments-list space-y-2 mb-2" data-comments-list={post.id}></div>
+              <form class="comment-form flex gap-2" data-comment-form={post.id}>
+                <input
+                  type="text"
+                  name="content"
+                  placeholder="Write a comment..."
+                  required
+                  class="h-7 flex-1 border border-surface-light bg-background px-2 text-[10px] text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  class="h-7 border border-primary bg-primary px-2 text-[10px] font-medium text-white transition hover:bg-primary/90"
+                >
+                  Comment
+                </button>
+              </form>
+              <p class="comment-error hidden text-[10px] text-red-400 mt-1" data-comment-error={post.id}></p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <div
+    id="report-modal"
+    class="fixed inset-0 z-[60] hidden items-center justify-center bg-background/80 p-4"
+  >
+    <div class="w-full max-w-sm border border-surface-light bg-surface p-4 shadow-lg">
+      <p class="text-sm font-medium text-main">Report</p>
+      <p id="report-target-label" class="text-[10px] text-muted mt-1"></p>
+      <form id="report-form" class="mt-2 flex flex-col gap-2">
+        <input type="hidden" name="target_type" id="report-target-type" />
+        <input type="hidden" name="target_id" id="report-target-id" />
+        <textarea
+          id="report-reason"
+          name="reason"
+          rows="3"
+          placeholder="Reason..."
+          required
+          class="w-full border border-surface-light bg-background px-3 py-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none resize-none"
+        ></textarea>
+        <p id="report-error" class="hidden text-[10px] text-red-400"></p>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            id="report-cancel"
+            class="h-7 border border-surface-light bg-surface px-3 text-[10px] text-main transition hover:bg-surface-light"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="h-7 border border-primary bg-primary px-3 text-[10px] font-medium text-white transition hover:bg-primary/90"
+          >
+            Submit
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {isValid && (
+    <div
+      id="post-panel"
+      class="fixed bottom-0 left-0 right-0 z-50 hidden border-t border-surface-light bg-background p-4 shadow-lg"
+    >
+      <div class="max-w-2xl mx-auto flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-main">Publish to /{blogName}</span>
+          <button
+            type="button"
+            id="post-panel-close"
+            class="text-xs text-muted hover:text-main"
+          >
+            close
+          </button>
+        </div>
+        <form id="post-form" class="flex flex-col gap-2">
+          <div class="flex gap-2">
+            <input
+              id="post-title"
+              name="title"
+              type="text"
+              placeholder="Title"
+              required
+              class="h-9 flex-1 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+            />
+            <input
+              id="post-author"
+              name="author"
+              type="text"
+              placeholder="Author"
+              required
+              class="h-9 w-32 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+            />
+          </div>
+          <MarkdownPreview client:load source="" />
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              id="request-2fa-btn"
+              class="h-8 border border-secondary bg-secondary px-3 text-xs font-medium text-white transition hover:bg-secondary/90"
+            >
+              Request 2FA code
+            </button>
+            <input
+              id="post-2fa"
+              name="code"
+              type="text"
+              placeholder="2FA code"
+              required
+              disabled
+              class="h-8 w-28 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none disabled:opacity-50"
+            />
+          </div>
+          <p id="post-error" class="hidden text-xs text-red-400"></p>
+          <button
+            type="submit"
+            id="publish-post-btn"
+            disabled
+            class="self-end h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Publish
+          </button>
+        </form>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script is:inline define:vars={{ blogName, isValid, currentUser }}>
+  const postsEl = document.getElementById('posts');
+  const emptyEl = document.getElementById('empty');
+  const newPostBtn = document.getElementById('new-post-btn');
+  const reportBlogBtn = document.querySelector('[data-report-blog]');
+  const postPanel = document.getElementById('post-panel');
+  const postPanelClose = document.getElementById('post-panel-close');
+  const postForm = document.getElementById('post-form');
+  const request2faBtn = document.getElementById('request-2fa-btn');
+  const post2faInput = document.getElementById('post-2fa');
+  const publishPostBtn = document.getElementById('publish-post-btn');
+  const postError = document.getElementById('post-error');
+
+  if (isValid) {
+    newPostBtn?.classList.remove('hidden');
+    reportBlogBtn?.classList.remove('hidden');
+  }
+
+  function openPostPanel() {
+    if (postPanel) postPanel.classList.remove('hidden');
+  }
+
+  function closePostPanel() {
+    if (postPanel) postPanel.classList.add('hidden');
+  }
+
+  newPostBtn?.addEventListener('click', openPostPanel);
+  postPanelClose?.addEventListener('click', closePostPanel);
+
+  let lastPostId = null;
+
+  async function loadMorePosts() {
+    if (!postsEl || !blogName) return;
+    const current = postsEl.querySelectorAll('article[data-id]');
+    const last = current[current.length - 1];
+    if (!last) return;
+    const before = Number(last.dataset.id);
+    if (lastPostId === before) return;
+    lastPostId = before;
+
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts?before=${before}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (!Array.isArray(data.messages) || data.messages.length === 0) return;
+
+      for (const post of data.messages) {
+        const existing = postsEl.querySelector(`[data-id="${post.id}"]`);
+        if (existing) continue;
+        const article = document.createElement('article');
+        article.className = 'border border-surface-light bg-background shadow-sm p-4 mb-3';
+        article.dataset.id = String(post.id);
+        article.innerHTML = `
+          <div class="flex items-start justify-between gap-3 mb-2">
+            <div>
+              <h2 class="text-lg font-bold text-main">${escapeHtml(post.title)}</h2>
+              <p class="text-[10px] text-muted">
+                by <span class="text-main">${escapeHtml(post.author)}</span> · <time>${new Date(post.created_at).toLocaleString()}</time>
+              </p>
+            </div>
+          </div>
+          <div class="markdown text-main break-words">${post.html || ''}</div>
+        `;
+        if (emptyEl) emptyEl.remove();
+        postsEl.appendChild(article);
+      }
+    } catch {}
+  }
+
+  if (postsEl) {
+    postsEl.addEventListener('scroll', () => {
+      if (postsEl.scrollTop + postsEl.clientHeight >= postsEl.scrollHeight - 200) {
+        loadMorePosts();
+      }
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  request2faBtn?.addEventListener('click', async () => {
+    if (!blogName) return;
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/challenge`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not request 2FA code');
+      if (post2faInput) {
+        post2faInput.disabled = false;
+        post2faInput.placeholder = 'Enter code from space';
+      }
+      if (publishPostBtn) publishPostBtn.disabled = false;
+      postError.textContent = 'Code sent to your notification space.';
+      postError.classList.remove('hidden', 'text-red-400');
+      postError.classList.add('text-primary');
+    } catch (err) {
+      postError.textContent = err.message;
+      postError.classList.remove('hidden', 'text-primary');
+      postError.classList.add('text-red-400');
+    }
+  });
+
+  postForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(postForm);
+    const body = {
+      title: fd.get('title').toString().trim(),
+      author: fd.get('author').toString().trim(),
+      content: fd.get('content').toString().trim(),
+      code: fd.get('code').toString().trim(),
+    };
+
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to publish');
+      window.location.reload();
+    } catch (err) {
+      postError.textContent = err.message;
+      postError.classList.remove('hidden', 'text-primary');
+      postError.classList.add('text-red-400');
+    }
+  });
+
+  const isLoggedIn = Boolean(currentUser);
+
+  function isOwner(curatorId) {
+    return Boolean(curatorId && currentUser && currentUser.id === curatorId);
+  }
+
+  function renderPost(post) {
+    const owner = isOwner(post.curator_id);
+    const loggedOutHint = isLoggedIn ? '' : '<p class="text-[10px] text-muted mt-1">Log in to react or comment.</p>';
+    const commentForm = isLoggedIn
+      ? `<form class="comment-form flex gap-2" data-comment-form="${post.id}">
+          <input type="text" name="content" placeholder="Write a comment..." required class="h-7 flex-1 border border-surface-light bg-background px-2 text-[10px] text-main placeholder:text-muted focus:border-secondary focus:outline-none" />
+          <button type="submit" class="h-7 border border-primary bg-primary px-2 text-[10px] font-medium text-white transition hover:bg-primary/90">Comment</button>
+        </form>`
+      : `<p class="text-[10px] text-muted">Log in to comment.</p>`;
+
+    const ownerButtons = owner
+      ? `<button type="button" data-edit-post="${post.id}" class="h-6 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light">Edit</button>
+         <button type="button" data-delete-post="${post.id}" class="h-6 border border-red-500/30 bg-red-500/10 px-2 text-[10px] text-red-400 transition hover:bg-red-500/20">Delete</button>`
+      : '';
+
+    return `
+      <article class="border border-surface-light bg-background shadow-sm p-4 mb-3" data-id="${post.id}" data-curator="${post.curator_id || ''}">
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <div>
+            <h2 class="post-title text-lg font-bold text-main">${escapeHtml(post.title)}</h2>
+            <p class="text-[10px] text-muted">
+              by <span class="text-main">${escapeHtml(post.author)}</span> · <time>${new Date(post.created_at).toLocaleString()}</time>
+            </p>
+          </div>
+          <div class="flex gap-1">
+            <button type="button" data-report="${post.id}" data-report-type="post" class="h-6 border border-surface-light bg-surface px-2 text-[10px] text-muted transition hover:text-main">Report</button>
+            ${ownerButtons}
+          </div>
+        </div>
+        <div class="post-content markdown text-main break-words">${post.html || ''}</div>
+
+        <div class="mt-3 flex items-center gap-2 border-t border-surface-light pt-2">
+          <div class="reactions flex gap-1" data-post="${post.id}">
+            <button data-reaction="${post.id}" data-type="like" type="button" class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light" title="Like">👍 <span class="reaction-count" data-type="like">0</span></button>
+            <button data-reaction="${post.id}" data-type="love" type="button" class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light" title="Love">❤️ <span class="reaction-count" data-type="love">0</span></button>
+            <button data-reaction="${post.id}" data-type="fire" type="button" class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light" title="Fire">🔥 <span class="reaction-count" data-type="fire">0</span></button>
+            <button data-reaction="${post.id}" data-type="rocket" type="button" class="h-6 inline-flex items-center gap-1 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light" title="Rocket">🚀 <span class="reaction-count" data-type="rocket">0</span></button>
+          </div>
+          <button type="button" data-toggle-comments="${post.id}" class="ml-auto h-6 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light">
+            Comments <span class="comment-count" data-post="${post.id}">0</span>
+          </button>
+        </div>
+        ${loggedOutHint}
+
+        <div class="comments-section hidden mt-3 border-t border-surface-light pt-2" data-comments="${post.id}">
+          <div class="comments-list space-y-2 mb-2" data-comments-list="${post.id}"></div>
+          ${commentForm}
+          <p class="comment-error hidden text-[10px] text-red-400 mt-1" data-comment-error="${post.id}"></p>
+        </div>
+      </article>
+    `;
+  }
+
+  async function loadReactions(postId, article) {
+    if (!article) article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+    if (!article) return;
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/${postId}/reactions`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (!Array.isArray(data.reactions)) return;
+
+      const counts = {};
+      for (const r of data.reactions) counts[r.type] = r.count;
+
+      article.querySelectorAll('.reaction-count').forEach((span) => {
+        const type = span.dataset.type;
+        span.textContent = String(counts[type] || 0);
+      });
+    } catch {}
+  }
+
+  async function submitReaction(postId, type) {
+    if (!isLoggedIn) {
+      window.location.href = '/login';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/${postId}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not react');
+      const article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+      if (article) loadReactions(postId, article);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function loadComments(postId, article) {
+    if (!article) article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+    if (!article) return;
+    const list = article.querySelector(`[data-comments-list="${postId}"]`);
+    const countSpan = article.querySelector(`.comment-count[data-post="${postId}"]`);
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/${postId}/comments`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const comments = data.comments || [];
+
+      if (countSpan) countSpan.textContent = String(comments.length);
+      if (!list) return;
+
+      if (comments.length === 0) {
+        list.innerHTML = '<p class="text-[10px] text-muted">No comments yet.</p>';
+      } else {
+        list.innerHTML = comments.map((c) => {
+          const own = isOwner(c.curator_id);
+          const actions = own
+            ? `<div class="flex gap-1 mt-1">
+                 <button type="button" data-edit-comment="${c.id}" class="text-[10px] text-primary hover:underline">Edit</button>
+                 <button type="button" data-delete-comment="${c.id}" class="text-[10px] text-red-400 hover:underline">Delete</button>
+               </div>`
+            : '';
+          return `
+            <div class="comment-item border border-surface-light bg-surface p-2" data-comment-id="${c.id}">
+              <p class="text-[10px] text-muted">by <span class="text-main">${escapeHtml(c.author)}</span> · <time>${new Date(c.created_at).toLocaleString()}</time></p>
+              <p class="comment-body text-xs text-main mt-1 break-words">${escapeHtml(c.content)}</p>
+              ${actions}
+            </div>
+          `;
+        }).join('');
+      }
+    } catch {}
+  }
+
+  async function submitComment(postId, content, errorEl) {
+    if (!isLoggedIn) {
+      window.location.href = '/login';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/${postId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not comment');
+      const article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+      if (article) loadComments(postId, article);
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+      }
+    }
+  }
+
+  async function updatePost(postId, title, content) {
+    if (!isLoggedIn) return;
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/${postId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+      if (!article) return;
+      article.querySelector('.post-title').textContent = data.post.title;
+      article.querySelector('.post-content').innerHTML = data.post.html || data.post.content;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deletePost(postId) {
+    if (!isLoggedIn) return;
+    if (!confirm('Delete this post?')) return;
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/${postId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+      if (article) article.remove();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function updateComment(commentId, content, commentEl) {
+    if (!isLoggedIn) return;
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/0/comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const bodyEl = commentEl?.querySelector('.comment-body');
+      if (bodyEl) bodyEl.textContent = data.comment.content;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deleteComment(commentId, commentEl) {
+    if (!isLoggedIn) return;
+    if (!confirm('Delete this comment?')) return;
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts/0/comments/${commentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (commentEl) commentEl.remove();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  const reportModal = document.getElementById('report-modal');
+  const reportForm = document.getElementById('report-form');
+  const reportTargetType = document.getElementById('report-target-type');
+  const reportTargetId = document.getElementById('report-target-id');
+  const reportTargetLabel = document.getElementById('report-target-label');
+  const reportError = document.getElementById('report-error');
+  const reportCancel = document.getElementById('report-cancel');
+
+  function openReport(targetType, targetId, label) {
+    if (reportModal) reportModal.classList.remove('hidden');
+    if (reportModal) reportModal.classList.add('flex');
+    if (reportTargetType) reportTargetType.value = targetType;
+    if (reportTargetId) reportTargetId.value = targetId;
+    if (reportTargetLabel) reportTargetLabel.textContent = label;
+    if (reportError) reportError.classList.add('hidden');
+    if (reportForm) reportForm.reset();
+  }
+
+  function closeReport() {
+    if (reportModal) reportModal.classList.add('hidden');
+    if (reportModal) reportModal.classList.remove('flex');
+  }
+
+  reportCancel?.addEventListener('click', closeReport);
+
+  reportBlogBtn?.addEventListener('click', () => {
+    openReport('blog', blogName, `Blog /${blogName}`);
+  });
+
+  reportForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!reportForm) return;
+    const fd = new FormData(reportForm);
+    const targetType = fd.get('target_type')?.toString() || '';
+    const targetId = fd.get('target_id')?.toString() || '';
+    const reason = fd.get('reason')?.toString().trim() || '';
+
+    if (!targetType || !targetId || !reason) {
+      if (reportError) {
+        reportError.textContent = 'Reason is required';
+        reportError.classList.remove('hidden');
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/content-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'blog', target_type: targetType, target_id: targetId, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not report');
+      closeReport();
+    } catch (err) {
+      if (reportError) {
+        reportError.textContent = err.message;
+        reportError.classList.remove('hidden');
+      }
+    }
+  });
+
+  if (postsEl) {
+    postsEl.addEventListener('click', (e) => {
+      const target = e.target.closest('[data-reaction], [data-toggle-comments], [data-report], [data-edit-post], [data-delete-post], [data-edit-comment], [data-delete-comment]');
+      if (!target) return;
+
+      if (target.dataset.reaction) {
+        const postId = Number(target.dataset.reaction);
+        const type = target.dataset.type;
+        if (postId && type) submitReaction(postId, type);
+        return;
+      }
+
+      if (target.dataset.toggleComments) {
+        const postId = Number(target.dataset.toggleComments);
+        const section = postsEl.querySelector(`[data-comments="${postId}"]`);
+        if (!section) return;
+        const isHidden = section.classList.contains('hidden');
+        if (isHidden) {
+          section.classList.remove('hidden');
+          loadComments(postId);
+        } else {
+          section.classList.add('hidden');
+        }
+        return;
+      }
+
+      if (target.dataset.report) {
+        const postId = target.dataset.report;
+        const type = target.dataset.reportType || 'post';
+        openReport(type, postId, `Post #${postId}`);
+        return;
+      }
+
+      if (target.dataset.editPost) {
+        const postId = Number(target.dataset.editPost);
+        const article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+        const title = article?.querySelector('.post-title')?.textContent || '';
+        const content = prompt('New content (Markdown):', article?.querySelector('.post-content')?.textContent?.trim() || '');
+        const newTitle = prompt('New title:', title);
+        if (content !== null && newTitle !== null) updatePost(postId, newTitle, content);
+        return;
+      }
+
+      if (target.dataset.deletePost) {
+        const postId = Number(target.dataset.deletePost);
+        deletePost(postId);
+        return;
+      }
+
+      if (target.dataset.editComment) {
+        const commentId = Number(target.dataset.editComment);
+        const commentEl = postsEl?.querySelector(`[data-comment-id="${commentId}"]`);
+        const current = commentEl?.querySelector('.comment-body')?.textContent?.trim() || '';
+        const content = prompt('Edit comment:', current);
+        if (content !== null) updateComment(commentId, content, commentEl);
+        return;
+      }
+
+      if (target.dataset.deleteComment) {
+        const commentId = Number(target.dataset.deleteComment);
+        const commentEl = postsEl?.querySelector(`[data-comment-id="${commentId}"]`);
+        deleteComment(commentId, commentEl);
+        return;
+      }
+    });
+
+    postsEl.addEventListener('submit', (e) => {
+      const form = e.target.closest('[data-comment-form]');
+      if (!form) return;
+      e.preventDefault();
+      if (!isLoggedIn) {
+        window.location.href = '/login';
+        return;
+      }
+      const postId = Number(form.dataset.commentForm);
+      const fd = new FormData(form);
+      const content = fd.get('content').toString().trim();
+      const article = postsEl?.querySelector(`article[data-id="${postId}"]`);
+      const errorEl = article?.querySelector(`[data-comment-error="${postId}"]`);
+
+      if (!content) {
+        if (errorEl) {
+          errorEl.textContent = 'Content is required';
+          errorEl.classList.remove('hidden');
+        }
+        return;
+      }
+
+      if (errorEl) errorEl.classList.add('hidden');
+      submitComment(postId, content, errorEl);
+      form.reset();
+    });
+  }
+
+  async function loadMorePosts() {
+    if (!postsEl || !blogName) return;
+    const current = postsEl.querySelectorAll('article[data-id]');
+    const last = current[current.length - 1];
+    if (!last) return;
+    const before = Number(last.dataset.id);
+    if (lastPostId === before) return;
+    lastPostId = before;
+
+    try {
+      const res = await fetch(`/api/blogs/${encodeURIComponent(blogName)}/posts?before=${before}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (!Array.isArray(data.messages) || data.messages.length === 0) return;
+
+      for (const post of data.messages) {
+        const existing = postsEl.querySelector(`[data-id="${post.id}"]`);
+        if (existing) continue;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderPost(post);
+        const article = wrapper.firstElementChild;
+        if (emptyEl) emptyEl.remove();
+        postsEl.appendChild(article);
+        loadReactions(post.id, article);
+      }
+    } catch {}
+  }
+</script>

@@ -128,3 +128,56 @@ select {
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
+
+/* Markdown content inside blog posts */
+.markdown {
+  line-height: 1.6;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 1rem 0 0.5rem;
+  font-weight: 700;
+  color: var(--color-main);
+}
+.markdown h1 { font-size: 1.25rem; }
+.markdown h2 { font-size: 1.1rem; }
+.markdown h3 { font-size: 1rem; }
+.markdown p {
+  margin: 0.5rem 0;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.markdown li {
+  margin: 0.25rem 0;
+}
+.markdown a {
+  color: #f76f53;
+  text-decoration: underline;
+}
+.markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: var(--color-surface-light);
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+}
+.markdown pre {
+  background: var(--color-surface-light);
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+.markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+.markdown blockquote {
+  border-left: 3px solid var(--color-surface-light);
+  padding-left: 0.75rem;
+  margin: 0.75rem 0;
+  color: var(--color-muted);
+}

@@ -1,0 +1,522 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import {
+  findForum,
+  getForumCategories,
+  getForumTopics,
+  validateForumName,
+} from '../../lib/forums';
+import { getCurrentCurator } from '../../lib/auth';
+
+const { name } = Astro.params;
+const forumName = typeof name === 'string' ? name : '';
+const isValid = validateForumName(forumName);
+const forum = isValid ? await findForum(forumName) : null;
+const categories = forum ? await getForumCategories(forumName) : [];
+const topics = forum ? await getForumTopics(forumName, undefined, undefined, 50) : [];
+const currentCurator = await getCurrentCurator(Astro.cookies);
+const currentUser = currentCurator ? { id: currentCurator.id, username: currentCurator.username } : null;
+---
+
+<Layout title={forum?.title ? `${forum.title} · openbin` : `${forumName} · openbin`}>
+  <section class="flex-1 flex flex-col overflow-hidden p-4">
+    <div class="max-w-3xl w-full mx-auto flex flex-col h-full gap-4">
+      <header class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-main">/{forumName}</h1>
+          {forum?.title && <p class="text-sm text-muted">{forum.title}</p>}
+          {forum?.description && <p class="text-xs text-muted">{forum.description}</p>}
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            data-report-forum
+            class="h-8 border border-surface-light bg-surface px-3 text-xs text-muted transition hover:text-main"
+          >
+            Report
+          </button>
+          <button
+            type="button"
+            id="new-category-btn"
+            class="hidden h-8 border border-surface-light bg-surface px-3 text-xs text-main transition hover:bg-surface-light"
+          >
+            New category
+          </button>
+          <button
+            type="button"
+            id="new-topic-btn"
+            class="hidden h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary/90"
+          >
+            New topic
+          </button>
+        </div>
+      </header>
+
+      {!isValid && (
+        <div class="text-sm text-main bg-red-500/10 border border-red-500/30 p-3">
+          Invalid forum name. Use 3–64 letters, numbers, underscores or dashes.
+        </div>
+      )}
+
+      {isValid && !forum && (
+        <div class="text-sm text-main bg-surface border border-surface-light p-4">
+          <p class="font-medium">This forum does not exist yet.</p>
+          <p class="text-xs text-muted mt-1">Create it from <a href="/spaces" class="text-primary hover:underline">/spaces</a>.</p>
+        </div>
+      )}
+
+      {forum && (
+        <>
+          <div id="categories" class="flex flex-wrap gap-2">
+            {categories.length === 0 && (
+              <span class="text-xs text-muted">No categories yet.</span>
+            )}
+            {categories.length > 0 && categories.map((cat) => (
+              <button
+                type="button"
+                data-category={cat.id}
+                class="category-pill h-7 border border-surface-light bg-surface px-2 text-xs text-main transition hover:bg-surface-light"
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+
+          <div class="flex-1 overflow-y-auto border border-surface-light bg-surface p-3 min-h-0">
+            <ul id="topics" class="space-y-2">
+              {topics.length === 0 && (
+                <li id="empty" class="text-center text-sm text-muted py-8">No topics yet.</li>
+              )}
+              {topics.length > 0 && topics.map((topic) => (
+                <li class="border border-surface-light bg-background p-3" data-id={topic.id} data-curator={topic.curator_id ?? ''}>
+                  <div class="flex items-start justify-between gap-2">
+                    <a href={`/forum/${forumName}/${topic.id}`} class="text-sm font-medium text-primary hover:underline">
+                      {topic.title}
+                    </a>
+                    <div class="flex gap-1">
+                      <button
+                        type="button"
+                        data-report={topic.id}
+                        data-report-type="topic"
+                        class="h-5 border border-surface-light bg-surface px-2 text-[10px] text-muted transition hover:text-main"
+                      >
+                        Report
+                      </button>
+                      {currentUser?.id === topic.curator_id && (
+                        <>
+                          <button
+                            type="button"
+                            data-edit-topic={topic.id}
+                            class="h-5 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            data-delete-topic={topic.id}
+                            class="h-5 border border-red-500/30 bg-red-500/10 px-2 text-[10px] text-red-400 transition hover:bg-red-500/20"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <p class="text-[10px] text-muted mt-1">
+                    by <span class="text-main">{topic.author}</span> · <time>{new Date(topic.created_at).toLocaleString()}</time>
+                    {topic.category_id && (
+                      <span class="ml-2 text-muted" data-category-tag={topic.category_id}>
+                        #
+                      </span>
+                    )}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
+  </section>
+
+  <div
+    id="report-modal"
+    class="fixed inset-0 z-[60] hidden items-center justify-center bg-background/80 p-4"
+  >
+    <div class="w-full max-w-sm border border-surface-light bg-surface p-4 shadow-lg">
+      <p class="text-sm font-medium text-main">Report</p>
+      <p id="report-target-label" class="text-[10px] text-muted mt-1"></p>
+      <form id="report-form" class="mt-2 flex flex-col gap-2">
+        <input type="hidden" name="target_type" id="report-target-type" />
+        <input type="hidden" name="target_id" id="report-target-id" />
+        <textarea
+          id="report-reason"
+          name="reason"
+          rows="3"
+          placeholder="Reason..."
+          required
+          class="w-full border border-surface-light bg-background px-3 py-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none resize-none"
+        ></textarea>
+        <p id="report-error" class="hidden text-[10px] text-red-400"></p>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            id="report-cancel"
+            class="h-7 border border-surface-light bg-surface px-3 text-[10px] text-main transition hover:bg-surface-light"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="h-7 border border-primary bg-primary px-3 text-[10px] font-medium text-white transition hover:bg-primary/90"
+          >
+            Submit
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {isValid && (
+    <>
+      <div
+        id="category-panel"
+        class="fixed bottom-0 left-0 right-0 z-50 hidden border-t border-surface-light bg-background p-4 shadow-lg"
+      >
+        <div class="max-w-2xl mx-auto flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-main">New category in /{forumName}</span>
+            <button type="button" id="category-panel-close" class="text-xs text-muted hover:text-main">close</button>
+          </div>
+          <form id="category-form" class="flex gap-2">
+            <input
+              id="category-name"
+              name="name"
+              type="text"
+              placeholder="Category name"
+              required
+              class="h-9 flex-1 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+            />
+            <button
+              type="submit"
+              class="h-9 border border-primary bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary/90"
+            >
+              Create
+            </button>
+          </form>
+          <p id="category-error" class="hidden text-xs text-red-400"></p>
+        </div>
+      </div>
+
+      <div
+        id="topic-panel"
+        class="fixed bottom-0 left-0 right-0 z-50 hidden border-t border-surface-light bg-background p-4 shadow-lg"
+      >
+        <div class="max-w-2xl mx-auto flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-main">New topic in /{forumName}</span>
+            <button type="button" id="topic-panel-close" class="text-xs text-muted hover:text-main">close</button>
+          </div>
+          <form id="topic-form" class="flex flex-col gap-2">
+            <input
+              id="topic-title"
+              name="title"
+              type="text"
+              placeholder="Title"
+              required
+              class="h-9 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+            />
+            <select
+              id="topic-category"
+              name="category_id"
+              class="h-9 border border-surface-light bg-background px-3 text-xs text-main focus:border-secondary focus:outline-none"
+            >
+              <option value="">No category</option>
+              {categories.map((cat) => (
+                <option value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+            <textarea
+              id="topic-content"
+              name="content"
+              rows="4"
+              placeholder="Content (optional)"
+              class="w-full border border-surface-light bg-background px-3 py-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none resize-none"
+            ></textarea>
+            <p id="topic-error" class="hidden text-xs text-red-400"></p>
+            <button
+              type="submit"
+              class="self-end h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary/90"
+            >
+              Publish
+            </button>
+          </form>
+        </div>
+      </div>
+    </>
+  )}
+</Layout>
+
+<script is:inline define:vars={{ forumName, isValid, currentUser, categories: categories.map(c => ({ id: c.id, name: c.name })) }}>
+  const newCategoryBtn = document.getElementById('new-category-btn');
+  const newTopicBtn = document.getElementById('new-topic-btn');
+  const categoryPanel = document.getElementById('category-panel');
+  const topicPanel = document.getElementById('topic-panel');
+  const categoryPanelClose = document.getElementById('category-panel-close');
+  const topicPanelClose = document.getElementById('topic-panel-close');
+  const categoryForm = document.getElementById('category-form');
+  const topicForm = document.getElementById('topic-form');
+  const categoryError = document.getElementById('category-error');
+  const topicError = document.getElementById('topic-error');
+  const categoryPills = document.querySelectorAll('.category-pill');
+  const topicsEl = document.getElementById('topics');
+
+  if (isValid) {
+    newCategoryBtn?.classList.remove('hidden');
+    newTopicBtn?.classList.remove('hidden');
+  }
+
+  function open(panel) { if (panel) panel.classList.remove('hidden'); }
+  function close(panel) { if (panel) panel.classList.add('hidden'); }
+
+  newCategoryBtn?.addEventListener('click', () => open(categoryPanel));
+  categoryPanelClose?.addEventListener('click', () => close(categoryPanel));
+  newTopicBtn?.addEventListener('click', () => open(topicPanel));
+  topicPanelClose?.addEventListener('click', () => close(topicPanel));
+
+  categoryForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(categoryForm);
+    const name = fd.get('name').toString().trim();
+    if (!name) return;
+
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not create category');
+      window.location.reload();
+    } catch (err) {
+      categoryError.textContent = err.message;
+      categoryError.classList.remove('hidden');
+    }
+  });
+
+  topicForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) {
+      window.location.href = '/login';
+      return;
+    }
+    const fd = new FormData(topicForm);
+    const categoryId = fd.get('category_id').toString();
+    const body = {
+      title: fd.get('title').toString().trim(),
+      content: fd.get('content').toString().trim() || null,
+      category_id: categoryId ? Number(categoryId) : null,
+    };
+
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not create topic');
+      window.location.href = `/forum/${encodeURIComponent(forumName)}/${data.topic.id}`;
+    } catch (err) {
+      topicError.textContent = err.message;
+      topicError.classList.remove('hidden');
+    }
+  });
+
+  let activeCategory = null;
+
+  categoryPills.forEach((pill) => {
+    pill.addEventListener('click', async () => {
+      const id = Number(pill.dataset.category);
+      if (activeCategory === id) {
+        activeCategory = null;
+        pill.classList.remove('border-primary');
+      } else {
+        activeCategory = id;
+        categoryPills.forEach((p) => p.classList.remove('border-primary'));
+        pill.classList.add('border-primary');
+      }
+      await loadTopics(activeCategory);
+    });
+  });
+
+  async function loadTopics(categoryId) {
+    if (!topicsEl || !forumName) return;
+    const url = new URL(`/api/forums/${encodeURIComponent(forumName)}/topics`, window.location.origin);
+    if (categoryId) url.searchParams.set('category', String(categoryId));
+
+    try {
+      const res = await fetch(url.toString());
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (!Array.isArray(data.topics)) return;
+
+      const empty = document.getElementById('empty');
+      if (empty) empty.remove();
+
+      topicsEl.innerHTML = data.topics.map((topic) => renderTopic(topic)).join('') || '<li id="empty" class="text-center text-sm text-muted py-8">No topics in this category.</li>';
+    } catch {}
+  }
+
+  function isOwner(curatorId) {
+    return Boolean(curatorId && currentUser && currentUser.id === curatorId);
+  }
+
+  function renderTopic(topic) {
+    const owner = isOwner(topic.curator_id);
+    const ownerButtons = owner
+      ? `<button type="button" data-edit-topic="${topic.id}" class="h-5 border border-surface-light bg-surface px-2 text-[10px] text-main transition hover:bg-surface-light">Edit</button>
+         <button type="button" data-delete-topic="${topic.id}" class="h-5 border border-red-500/30 bg-red-500/10 px-2 text-[10px] text-red-400 transition hover:bg-red-500/20">Delete</button>`
+      : '';
+    return `
+      <li class="border border-surface-light bg-background p-3" data-id="${topic.id}" data-curator="${topic.curator_id || ''}">
+        <div class="flex items-start justify-between gap-2">
+          <a href="/forum/${encodeURIComponent(forumName)}/${topic.id}" class="text-sm font-medium text-primary hover:underline">${escapeHtml(topic.title)}</a>
+          <div class="flex gap-1">
+            <button type="button" data-report="${topic.id}" data-report-type="topic" class="h-5 border border-surface-light bg-surface px-2 text-[10px] text-muted transition hover:text-main">Report</button>
+            ${ownerButtons}
+          </div>
+        </div>
+        <p class="text-[10px] text-muted mt-1">
+          by <span class="text-main">${escapeHtml(topic.author)}</span> · <time>${new Date(topic.created_at).toLocaleString()}</time>
+        </p>
+      </li>
+    `;
+  }
+
+  async function editTopic(topicId) {
+    if (!currentUser) {
+      window.location.href = '/login';
+      return;
+    }
+    const li = topicsEl?.querySelector(`li[data-id="${topicId}"]`);
+    const link = li?.querySelector('a');
+    const title = prompt('New title:', link?.textContent?.trim() || '');
+    if (title === null) return;
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics/${topicId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (link) link.textContent = data.topic.title;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deleteTopic(topicId) {
+    if (!currentUser) return;
+    if (!confirm('Delete this topic?')) return;
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics/${topicId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const li = topicsEl?.querySelector(`li[data-id="${topicId}"]`);
+      if (li) li.remove();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  const reportModal = document.getElementById('report-modal');
+  const reportForm = document.getElementById('report-form');
+  const reportTargetType = document.getElementById('report-target-type');
+  const reportTargetId = document.getElementById('report-target-id');
+  const reportTargetLabel = document.getElementById('report-target-label');
+  const reportError = document.getElementById('report-error');
+  const reportCancel = document.getElementById('report-cancel');
+
+  function openReport(targetType, targetId, label) {
+    if (reportModal) { reportModal.classList.remove('hidden'); reportModal.classList.add('flex'); }
+    if (reportTargetType) reportTargetType.value = targetType;
+    if (reportTargetId) reportTargetId.value = targetId;
+    if (reportTargetLabel) reportTargetLabel.textContent = label;
+    if (reportError) reportError.classList.add('hidden');
+    if (reportForm) reportForm.reset();
+  }
+
+  function closeReport() {
+    if (reportModal) { reportModal.classList.add('hidden'); reportModal.classList.remove('flex'); }
+  }
+
+  reportCancel?.addEventListener('click', closeReport);
+
+  reportForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!reportForm) return;
+    const fd = new FormData(reportForm);
+    const targetType = fd.get('target_type')?.toString() || '';
+    const targetId = fd.get('target_id')?.toString() || '';
+    const reason = fd.get('reason')?.toString().trim() || '';
+
+    if (!targetType || !targetId || !reason) {
+      if (reportError) {
+        reportError.textContent = 'Reason is required';
+        reportError.classList.remove('hidden');
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/content-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'forum', target_type: targetType, target_id: targetId, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not report');
+      closeReport();
+    } catch (err) {
+      if (reportError) {
+        reportError.textContent = err.message;
+        reportError.classList.remove('hidden');
+      }
+    }
+  });
+
+  document.querySelector('[data-report-forum]')?.addEventListener('click', () => {
+    openReport('forum', forumName, `Forum /${forumName}`);
+  });
+
+  topicsEl?.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-report], [data-edit-topic], [data-delete-topic]');
+    if (!target) return;
+
+    if (target.dataset.report) {
+      const topicId = target.dataset.report;
+      const type = target.dataset.reportType || 'topic';
+      openReport(type, topicId, `Topic #${topicId}`);
+      return;
+    }
+
+    if (target.dataset.editTopic) {
+      editTopic(Number(target.dataset.editTopic));
+      return;
+    }
+
+    if (target.dataset.deleteTopic) {
+      deleteTopic(Number(target.dataset.deleteTopic));
+      return;
+    }
+  });
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>

@@ -426,6 +426,55 @@ function priorityBadge(priority: number) {
       let registration;
       let currentSubscription;
       let vapidPublicKey;
+      const pushKey = `space:push:${spaceName}`;
+
+      function getPushEnabled() {
+        try {
+          return localStorage.getItem(pushKey) === '1';
+        } catch {
+          return false;
+        }
+      }
+
+      function setPushEnabled(enabled) {
+        try {
+          if (enabled) localStorage.setItem(pushKey, '1');
+          else localStorage.removeItem(pushKey);
+        } catch {}
+      }
+
+      async function subscribe() {
+        if (Notification.permission === 'default') {
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            pushToggle.textContent = 'Push denied';
+            pushToggle.disabled = true;
+            return null;
+          }
+        }
+        const sub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidPublicKey,
+        });
+        await fetch(`/s/${encodeURIComponent(spaceName)}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub),
+        });
+        setPushEnabled(true);
+        return sub;
+      }
+
+      async function unsubscribe() {
+        if (!currentSubscription) return;
+        await currentSubscription.unsubscribe();
+        await fetch(`/s/${encodeURIComponent(spaceName)}/subscribe`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: currentSubscription.endpoint }),
+        });
+        setPushEnabled(false);
+      }
 
       async function initPush() {
         const keyRes = await fetch('/s/key');
@@ -444,6 +493,13 @@ function priorityBadge(priority: number) {
         pushToggle.disabled = false;
         registration = await navigator.serviceWorker.register('/service-worker.js');
         currentSubscription = await registration.pushManager.getSubscription();
+
+        // Re-subscribe automatically if the user previously enabled push
+        // and the browser lost the subscription (e.g. after restart).
+        if (!currentSubscription && Notification.permission === 'granted' && getPushEnabled()) {
+          currentSubscription = await subscribe();
+        }
+
         pushToggle.textContent = currentSubscription ? 'Disable notifications' : 'Enable notifications';
       }
 
@@ -457,31 +513,10 @@ function priorityBadge(priority: number) {
             return;
           }
           if (currentSubscription) {
-            await currentSubscription.unsubscribe();
-            await fetch(`/s/${encodeURIComponent(spaceName)}/subscribe`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ endpoint: currentSubscription.endpoint }),
-            });
+            await unsubscribe();
             currentSubscription = null;
           } else {
-            if (Notification.permission === 'default') {
-              const permission = await Notification.requestPermission();
-              if (permission !== 'granted') {
-                pushToggle.textContent = 'Push denied';
-                pushToggle.disabled = true;
-                return;
-              }
-            }
-            currentSubscription = await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: vapidPublicKey,
-            });
-            await fetch(`/s/${encodeURIComponent(spaceName)}/subscribe`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(currentSubscription),
-            });
+            currentSubscription = await subscribe();
           }
           pushToggle.textContent = currentSubscription ? 'Disable notifications' : 'Enable notifications';
         } catch (err) {

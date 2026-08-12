@@ -97,6 +97,107 @@ export interface PendingUploadRecord {
   created_at: string;
 }
 
+export interface BlogRecord {
+  name: string;
+  notification_space: string;
+  title: string | null;
+  description: string | null;
+  curator_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlogPostRecord {
+  id: number;
+  blog_name: string;
+  title: string;
+  author: string;
+  content: string;
+  curator_id: string | null;
+  created_at: string;
+}
+
+export interface Blog2FAChallengeRecord {
+  id: number;
+  blog_name: string;
+  code: string;
+  used: boolean;
+  created_at: string;
+}
+
+export interface BlogCommentRecord {
+  id: number;
+  post_id: number;
+  author: string;
+  content: string;
+  curator_id: string | null;
+  created_at: string;
+}
+
+export interface BlogReactionRecord {
+  id: number;
+  post_id: number;
+  type: string;
+  author: string;
+  curator_id: string | null;
+  created_at: string;
+}
+
+export interface BlogReportRecord {
+  id: number;
+  target_type: string;
+  target_id: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface ForumRecord {
+  name: string;
+  title: string | null;
+  description: string | null;
+  curator_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForumCategoryRecord {
+  id: number;
+  forum_name: string;
+  name: string;
+  curator_id: string | null;
+  created_at: string;
+}
+
+export interface ForumTopicRecord {
+  id: number;
+  forum_name: string;
+  category_id: number | null;
+  title: string;
+  author: string;
+  content: string;
+  curator_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForumReplyRecord {
+  id: number;
+  topic_id: number;
+  parent_id: number | null;
+  author: string;
+  content: string;
+  curator_id: string | null;
+  created_at: string;
+}
+
+export interface ForumReportRecord {
+  id: number;
+  target_type: string;
+  target_id: string;
+  reason: string;
+  created_at: string;
+}
+
 let pool: VercelPool | undefined;
 let schemaEnsured = false;
 
@@ -290,6 +391,148 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_curator_spaces_curator_id ON curator_spaces(curator_id)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS blogs (
+      name VARCHAR(64) PRIMARY KEY,
+      notification_space VARCHAR(64) NOT NULL REFERENCES spaces(name) ON DELETE CASCADE,
+      title TEXT,
+      description TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`ALTER TABLE blogs ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blogs_updated_at ON blogs(updated_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS blog_posts (
+      id BIGSERIAL PRIMARY KEY,
+      blog_name VARCHAR(64) NOT NULL REFERENCES blogs(name) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      author TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_posts_blog_name_created_at ON blog_posts(blog_name, created_at DESC)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_posts_created_at ON blog_posts(created_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS blog_2fa_challenges (
+      id BIGSERIAL PRIMARY KEY,
+      blog_name VARCHAR(64) NOT NULL REFERENCES blogs(name) ON DELETE CASCADE,
+      code VARCHAR(16) NOT NULL,
+      used BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_2fa_challenges_blog_name_code ON blog_2fa_challenges(blog_name, code)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_2fa_challenges_created_at ON blog_2fa_challenges(created_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS blog_comments (
+      id BIGSERIAL PRIMARY KEY,
+      post_id BIGINT NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+      author TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`ALTER TABLE blog_comments ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_comments_post_id ON blog_comments(post_id)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_comments_created_at ON blog_comments(created_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS blog_reactions (
+      id BIGSERIAL PRIMARY KEY,
+      post_id BIGINT NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+      type VARCHAR(32) NOT NULL,
+      author TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(post_id, type, author)
+    )
+  `;
+  await p.sql`ALTER TABLE blog_reactions ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_reactions_post_id ON blog_reactions(post_id)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS blog_reports (
+      id BIGSERIAL PRIMARY KEY,
+      target_type VARCHAR(32) NOT NULL,
+      target_id TEXT NOT NULL,
+      reason TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_reports_target ON blog_reports(target_type, target_id)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS forums (
+      name VARCHAR(64) PRIMARY KEY,
+      title TEXT,
+      description TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`ALTER TABLE forums ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forums_updated_at ON forums(updated_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS forum_categories (
+      id BIGSERIAL PRIMARY KEY,
+      forum_name VARCHAR(64) NOT NULL REFERENCES forums(name) ON DELETE CASCADE,
+      name VARCHAR(120) NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(forum_name, name)
+    )
+  `;
+  await p.sql`ALTER TABLE forum_categories ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_categories_forum_name ON forum_categories(forum_name)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS forum_topics (
+      id BIGSERIAL PRIMARY KEY,
+      forum_name VARCHAR(64) NOT NULL REFERENCES forums(name) ON DELETE CASCADE,
+      category_id BIGINT REFERENCES forum_categories(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      author TEXT NOT NULL,
+      content TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`ALTER TABLE forum_topics ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_topics_forum_name_created_at ON forum_topics(forum_name, created_at DESC)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_topics_category_id_created_at ON forum_topics(category_id, created_at DESC)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS forum_replies (
+      id BIGSERIAL PRIMARY KEY,
+      topic_id BIGINT NOT NULL REFERENCES forum_topics(id) ON DELETE CASCADE,
+      parent_id BIGINT REFERENCES forum_replies(id) ON DELETE CASCADE,
+      author TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`ALTER TABLE forum_replies ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_replies_topic_id ON forum_replies(topic_id)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_replies_parent_id ON forum_replies(parent_id)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_replies_topic_id_created_at ON forum_replies(topic_id, created_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS forum_reports (
+      id BIGSERIAL PRIMARY KEY,
+      target_type VARCHAR(32) NOT NULL,
+      target_id TEXT NOT NULL,
+      reason TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_reports_target ON forum_reports(target_type, target_id)`;
 
   await p.sql`
     CREATE TABLE IF NOT EXISTS pending_uploads (

@@ -1,0 +1,500 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import {
+  findForum,
+  findForumTopic,
+  getForumReplies,
+  validateForumName,
+} from '../../../lib/forums';
+import { getCurrentCurator } from '../../../lib/auth';
+
+const { name, topic_id } = Astro.params;
+const forumName = typeof name === 'string' ? name : '';
+const topicId = typeof topic_id === 'string' ? Number(topic_id) : 0;
+const isValid = validateForumName(forumName) && Number.isFinite(topicId) && topicId > 0;
+
+const forum = isValid ? await findForum(forumName) : null;
+const topic = isValid ? await findForumTopic(topicId) : null;
+const replies = topic ? await getForumReplies(topicId) : [];
+const currentCurator = await getCurrentCurator(Astro.cookies);
+const currentUser = currentCurator ? { id: currentCurator.id, username: currentCurator.username } : null;
+
+type ReplyNode = {
+  id: number;
+  topic_id: number;
+  parent_id: number | null;
+  author: string;
+  content: string;
+  curator_id: string | null;
+  created_at: string;
+  children: ReplyNode[];
+};
+
+function buildTree(replies: ReplyNode[]): ReplyNode[] {
+  const byParent = new Map<number, ReplyNode[]>();
+  for (const r of replies) {
+    const key = r.parent_id ?? 0;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(r);
+  }
+
+  function render(parentId: number): ReplyNode[] {
+    const children = byParent.get(parentId) || [];
+    return children.map((r) => ({
+      ...r,
+      children: render(r.id),
+    }));
+  }
+
+  return render(0);
+}
+
+const replyTree = buildTree(replies);
+
+function isOwner(curatorId: string | null): boolean {
+  return Boolean(curatorId && currentUser && currentUser.id === curatorId);
+}
+
+function replyActions(r: ReplyNode): string {
+  const own = isOwner(r.curator_id);
+  const ownerButtons = own
+    ? `<button type="button" data-edit-reply="${r.id}" class="text-[10px] text-primary hover:underline">Edit</button>
+       <button type="button" data-delete-reply="${r.id}" class="text-[10px] text-red-400 hover:underline">Delete</button>`
+    : '';
+  return `
+    <div class="flex gap-2 mt-2">
+      <button type="button" data-reply="${r.id}" class="text-[10px] text-primary hover:underline">reply</button>
+      <button type="button" data-report="${r.id}" data-report-type="reply" class="text-[10px] text-muted hover:text-main">report</button>
+      ${ownerButtons}
+    </div>
+  `;
+}
+
+function renderReplies(nodes: ReplyNode[]): string {
+  if (!nodes.length) return '';
+  return `
+    <ul class="space-y-3">
+      ${nodes
+        .map(
+          (r) => `
+        <li class="border-l-2 border-surface-light pl-3" data-id="${r.id}" data-curator="${r.curator_id || ''}">
+          <div class="border border-surface-light bg-background p-3">
+            <p class="text-[10px] text-muted">
+              by <span class="text-main">${escapeHtml(r.author)}</span> · <time>${new Date(r.created_at).toLocaleString()}</time>
+            </p>
+            <p class="reply-content text-sm text-main whitespace-pre-wrap break-words mt-1">${escapeHtml(r.content)}</p>
+            ${replyActions(r)}
+          </div>
+          ${renderReplies(r.children)}
+        </li>
+      `
+        )
+        .join('')}
+    </ul>
+  `;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const repliesHtml = renderReplies(replyTree);
+---
+
+<Layout title={topic?.title ? `${topic.title} · openbin` : `${forumName} · openbin`}>
+  <section class="flex-1 flex flex-col overflow-hidden p-4">
+    <div class="max-w-3xl w-full mx-auto flex flex-col h-full gap-4">
+      <header class="flex items-center justify-between">
+        <div>
+          <a href={`/forum/${forumName}`} class="text-xs text-primary hover:underline">← /{forumName}</a>
+          {topic && <h1 class="text-xl font-bold text-main mt-1">{topic.title}</h1>}
+          {topic && (
+            <p class="text-[10px] text-muted">
+              by <span class="text-main">{topic.author}</span> · <time>{new Date(topic.created_at).toLocaleString()}</time>
+            </p>
+          )}
+        </div>
+        <div class="flex items-center gap-2">
+          {topic && (
+            <>
+              <button
+                type="button"
+                data-report-topic={topic.id}
+                class="h-8 border border-surface-light bg-surface px-3 text-xs text-muted transition hover:text-main"
+              >
+                Report
+              </button>
+              {currentUser?.id === topic.curator_id && (
+                <>
+                  <button
+                    type="button"
+                    data-edit-topic={topic.id}
+                    class="h-8 border border-surface-light bg-surface px-3 text-xs text-main transition hover:bg-surface-light"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    data-delete-topic={topic.id}
+                    class="h-8 border border-red-500/30 bg-red-500/10 px-3 text-xs text-red-400 transition hover:bg-red-500/20"
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          <button
+            type="button"
+            id="reply-btn"
+            class="hidden h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary/90"
+          >
+            Reply
+          </button>
+        </div>
+      </header>
+
+      {!isValid && (
+        <div class="text-sm text-main bg-red-500/10 border border-red-500/30 p-3">
+          Invalid forum or topic.
+        </div>
+      )}
+
+      {isValid && !topic && (
+        <div class="text-sm text-main bg-surface border border-surface-light p-4">
+          <p class="font-medium">Topic not found.</p>
+        </div>
+      )}
+
+      {topic && (
+        <>
+          {topic.content && (
+            <div class="border border-surface-light bg-background p-4 text-sm text-main whitespace-pre-wrap break-words">
+              {topic.content}
+            </div>
+          )}
+
+          <div class="flex-1 overflow-y-auto border border-surface-light bg-surface p-3 min-h-0">
+            {replyTree.length === 0 ? (
+              <div id="empty" class="text-center text-sm text-muted py-8">No replies yet.</div>
+            ) : (
+              <div id="replies" set:html={repliesHtml} />
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  </section>
+
+  <div
+    id="report-modal"
+    class="fixed inset-0 z-[60] hidden items-center justify-center bg-background/80 p-4"
+  >
+    <div class="w-full max-w-sm border border-surface-light bg-surface p-4 shadow-lg">
+      <p class="text-sm font-medium text-main">Report</p>
+      <p id="report-target-label" class="text-[10px] text-muted mt-1"></p>
+      <form id="report-form" class="mt-2 flex flex-col gap-2">
+        <input type="hidden" name="target_type" id="report-target-type" />
+        <input type="hidden" name="target_id" id="report-target-id" />
+        <textarea
+          id="report-reason"
+          name="reason"
+          rows="3"
+          placeholder="Reason..."
+          required
+          class="w-full border border-surface-light bg-background px-3 py-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none resize-none"
+        ></textarea>
+        <p id="report-error" class="hidden text-[10px] text-red-400"></p>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            id="report-cancel"
+            class="h-7 border border-surface-light bg-surface px-3 text-[10px] text-main transition hover:bg-surface-light"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="h-7 border border-primary bg-primary px-3 text-[10px] font-medium text-white transition hover:bg-primary/90"
+          >
+            Submit
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {isValid && topic && (
+    <div
+      id="reply-panel"
+      class="fixed bottom-0 left-0 right-0 z-50 hidden border-t border-surface-light bg-background p-4 shadow-lg"
+    >
+      <div class="max-w-2xl mx-auto flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-main">Reply to <span id="reply-to-label">topic</span></span>
+          <button type="button" id="reply-panel-close" class="text-xs text-muted hover:text-main">close</button>
+        </div>
+        <form id="reply-form" class="flex flex-col gap-2">
+          <input type="hidden" id="reply-parent" name="parent_id" value="" />
+          <textarea
+            id="reply-content"
+            name="content"
+            rows="4"
+            placeholder="Write a reply..."
+            required
+            class="w-full border border-surface-light bg-background px-3 py-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none resize-none"
+          ></textarea>
+          <div class="flex justify-end">
+            <button
+              type="submit"
+              class="h-9 border border-primary bg-primary px-3 text-xs font-medium text-white transition hover:bg-primary/90"
+            >
+              Reply
+            </button>
+          </div>
+          <p id="reply-error" class="hidden text-xs text-red-400"></p>
+        </form>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script is:inline define:vars={{ forumName, topicId, isValid, currentUser, topicIdStr: topicId }}>
+  const replyBtn = document.getElementById('reply-btn');
+  const replyPanel = document.getElementById('reply-panel');
+  const replyPanelClose = document.getElementById('reply-panel-close');
+  const replyForm = document.getElementById('reply-form');
+  const replyParent = document.getElementById('reply-parent');
+  const replyToLabel = document.getElementById('reply-to-label');
+  const replyError = document.getElementById('reply-error');
+  const repliesEl = document.getElementById('replies');
+
+  if (isValid && topicId) {
+    replyBtn?.classList.remove('hidden');
+  }
+
+  function isLoggedIn() { return Boolean(currentUser); }
+
+  function requireLogin() {
+    if (!isLoggedIn()) {
+      window.location.href = '/login';
+      return false;
+    }
+    return true;
+  }
+
+  function openReply(parentId, label) {
+    if (!requireLogin()) return;
+    if (replyPanel) replyPanel.classList.remove('hidden');
+    if (replyParent) replyParent.value = parentId || '';
+    if (replyToLabel) replyToLabel.textContent = label || 'topic';
+  }
+
+  function closeReply() {
+    if (replyPanel) replyPanel.classList.add('hidden');
+    if (replyParent) replyParent.value = '';
+  }
+
+  replyBtn?.addEventListener('click', () => openReply('', 'topic'));
+  replyPanelClose?.addEventListener('click', closeReply);
+
+  replyForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireLogin()) return;
+    const fd = new FormData(replyForm);
+    const parentId = fd.get('parent_id').toString();
+    const content = fd.get('content').toString().trim();
+
+    if (!content) {
+      replyError.textContent = 'Content is required';
+      replyError.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics/${topicId}/replies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, parent_id: parentId ? Number(parentId) : null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not reply');
+      window.location.reload();
+    } catch (err) {
+      replyError.textContent = err.message;
+      replyError.classList.remove('hidden');
+    }
+  });
+
+  const reportModal = document.getElementById('report-modal');
+  const reportForm = document.getElementById('report-form');
+  const reportTargetType = document.getElementById('report-target-type');
+  const reportTargetId = document.getElementById('report-target-id');
+  const reportTargetLabel = document.getElementById('report-target-label');
+  const reportError = document.getElementById('report-error');
+  const reportCancel = document.getElementById('report-cancel');
+
+  function openReport(targetType, targetId, label) {
+    if (reportModal) { reportModal.classList.remove('hidden'); reportModal.classList.add('flex'); }
+    if (reportTargetType) reportTargetType.value = targetType;
+    if (reportTargetId) reportTargetId.value = targetId;
+    if (reportTargetLabel) reportTargetLabel.textContent = label;
+    if (reportError) reportError.classList.add('hidden');
+    if (reportForm) reportForm.reset();
+  }
+
+  function closeReport() {
+    if (reportModal) { reportModal.classList.add('hidden'); reportModal.classList.remove('flex'); }
+  }
+
+  reportCancel?.addEventListener('click', closeReport);
+
+  reportForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!reportForm) return;
+    const fd = new FormData(reportForm);
+    const targetType = fd.get('target_type')?.toString() || '';
+    const targetId = fd.get('target_id')?.toString() || '';
+    const reason = fd.get('reason')?.toString().trim() || '';
+
+    if (!targetType || !targetId || !reason) {
+      if (reportError) {
+        reportError.textContent = 'Reason is required';
+        reportError.classList.remove('hidden');
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/content-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'forum', target_type: targetType, target_id: targetId, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not report');
+      closeReport();
+    } catch (err) {
+      if (reportError) {
+        reportError.textContent = err.message;
+        reportError.classList.remove('hidden');
+      }
+    }
+  });
+
+  document.querySelector('[data-report-topic]')?.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-report-topic]');
+    const id = target?.dataset?.reportTopic || topicIdStr;
+    openReport('topic', id, `Topic #${id}`);
+  });
+
+  async function editTopic() {
+    if (!requireLogin()) return;
+    const titleEl = document.querySelector('h1');
+    const title = prompt('Edit topic title:', titleEl?.textContent?.trim() || '');
+    if (title === null) return;
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics/${topicId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (titleEl) titleEl.textContent = data.topic.title;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deleteTopic() {
+    if (!requireLogin()) return;
+    if (!confirm('Delete this topic?')) return;
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics/${topicId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      window.location.href = `/forum/${encodeURIComponent(forumName)}`;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function editReply(replyId, replyEl) {
+    if (!requireLogin()) return;
+    const contentEl = replyEl?.querySelector('.reply-content');
+    const content = prompt('Edit reply:', contentEl?.textContent?.trim() || '');
+    if (content === null) return;
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics/${topicId}/replies/${replyId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (contentEl) contentEl.textContent = data.reply.content;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function deleteReply(replyId, replyEl) {
+    if (!requireLogin()) return;
+    if (!confirm('Delete this reply?')) return;
+    try {
+      const res = await fetch(`/api/forums/${encodeURIComponent(forumName)}/topics/${topicId}/replies/${replyId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (replyEl) replyEl.remove();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-reply], [data-report], [data-edit-topic], [data-delete-topic], [data-edit-reply], [data-delete-reply]');
+    if (!target) return;
+
+    if (target.dataset.reply) {
+      openReply(target.dataset.reply, 'reply');
+      return;
+    }
+
+    if (target.dataset.report) {
+      const id = target.dataset.report;
+      const type = target.dataset.reportType || 'reply';
+      openReport(type, id, `${type} #${id}`);
+      return;
+    }
+
+    if (target.dataset.editTopic) {
+      editTopic();
+      return;
+    }
+
+    if (target.dataset.deleteTopic) {
+      deleteTopic();
+      return;
+    }
+
+    if (target.dataset.editReply) {
+      const replyId = Number(target.dataset.editReply);
+      const replyEl = document.querySelector(`li[data-id="${replyId}"]`);
+      editReply(replyId, replyEl);
+      return;
+    }
+
+    if (target.dataset.deleteReply) {
+      const replyId = Number(target.dataset.deleteReply);
+      const replyEl = document.querySelector(`li[data-id="${replyId}"]`);
+      deleteReply(replyId, replyEl);
+      return;
+    }
+  });
+</script>

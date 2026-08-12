@@ -51,6 +51,89 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
         </button>
       </form>
 
+      <div class="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          id="create-blog-btn"
+          class="h-8 border border-surface-light bg-surface px-2 text-xs text-main transition hover:bg-surface-light"
+        >
+          Create blog
+        </button>
+        <button
+          type="button"
+          id="create-forum-btn"
+          class="h-8 border border-surface-light bg-surface px-2 text-xs text-main transition hover:bg-surface-light"
+        >
+          Create forum
+        </button>
+      </div>
+
+      <form id="blog-form" class="hidden mt-4 flex flex-col gap-3 border-t border-surface-light pt-4">
+        <p class="text-xs font-medium text-main">Create a blog</p>
+        <input
+          id="blog-name"
+          type="text"
+          placeholder="myblog"
+          required
+          minlength="3"
+          maxlength="64"
+          pattern="[a-zA-Z0-9_-]{3,64}"
+          title="3–64 letters, numbers, underscores or dashes"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <input
+          id="blog-notification-space"
+          type="text"
+          placeholder="notification space (e.g. my-2fa)"
+          required
+          minlength="3"
+          maxlength="64"
+          pattern="[a-zA-Z0-9_-]{3,64}"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <input
+          id="blog-title"
+          type="text"
+          placeholder="title (optional)"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <p id="blog-error" class="hidden text-xs text-red-400"></p>
+        <button
+          type="submit"
+          class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Create blog
+        </button>
+      </form>
+
+      <form id="forum-form" class="hidden mt-4 flex flex-col gap-3 border-t border-surface-light pt-4">
+        <p class="text-xs font-medium text-main">Create a forum</p>
+        <input
+          id="forum-name"
+          type="text"
+          placeholder="myforum"
+          required
+          minlength="3"
+          maxlength="64"
+          pattern="[a-zA-Z0-9_-]{3,64}"
+          title="3–64 letters, numbers, underscores or dashes"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <input
+          id="forum-title"
+          type="text"
+          placeholder="title (optional)"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <p id="forum-error" class="hidden text-xs text-red-400"></p>
+        <button
+          type="submit"
+          class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Create forum
+        </button>
+      </form>
+
       <div class="mt-6 text-[10px] text-muted">
         <p class="mb-1">Publish from anywhere:</p>
         <code class="block text-main bg-background border border-surface-light p-2 break-all font-mono">
@@ -114,6 +197,87 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
         suffix += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       input.value = `space-${suffix}`;
+    });
+  }
+
+  const createBlogBtn = document.getElementById('create-blog-btn');
+  const createForumBtn = document.getElementById('create-forum-btn');
+  const blogForm = document.getElementById('blog-form');
+  const forumForm = document.getElementById('forum-form');
+
+  function toggleForm(show) {
+    if (blogForm) blogForm.classList.add('hidden');
+    if (forumForm) forumForm.classList.add('hidden');
+    if (show === 'blog' && blogForm) blogForm.classList.remove('hidden');
+    if (show === 'forum' && forumForm) forumForm.classList.remove('hidden');
+  }
+
+  if (createBlogBtn) createBlogBtn.addEventListener('click', () => toggleForm('blog'));
+  if (createForumBtn) createForumBtn.addEventListener('click', () => toggleForm('forum'));
+
+  const blogNameInput = document.getElementById('blog-name');
+  const blogNotificationInput = document.getElementById('blog-notification-space');
+  const blogTitleInput = document.getElementById('blog-title');
+  const blogError = document.getElementById('blog-error');
+
+  if (blogForm) {
+    blogForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = blogNameInput.value.trim();
+      const notificationSpace = blogNotificationInput.value.trim();
+      const title = blogTitleInput.value.trim() || null;
+
+      if (!/^[a-zA-Z0-9_-]{3,64}$/.test(name) || !/^[a-zA-Z0-9_-]{3,64}$/.test(notificationSpace)) {
+        blogError.textContent = 'Use 3–64 letters, numbers, underscores or dashes.';
+        blogError.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/blogs/${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notification_space: notificationSpace, title }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not create blog');
+        window.location.href = `/blog/${encodeURIComponent(name)}`;
+      } catch (err) {
+        blogError.textContent = err.message;
+        blogError.classList.remove('hidden');
+      }
+    });
+  }
+
+  const forumNameInput = document.getElementById('forum-name');
+  const forumTitleInput = document.getElementById('forum-title');
+  const forumError = document.getElementById('forum-error');
+
+  if (forumForm) {
+    forumForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = forumNameInput.value.trim();
+      const title = forumTitleInput.value.trim() || null;
+
+      if (!/^[a-zA-Z0-9_-]{3,64}$/.test(name)) {
+        forumError.textContent = 'Use 3–64 letters, numbers, underscores or dashes.';
+        forumError.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/forums/${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not create forum');
+        window.location.href = `/forum/${encodeURIComponent(name)}`;
+      } catch (err) {
+        forumError.textContent = err.message;
+        forumError.classList.remove('hidden');
+      }
     });
   }
 </script>
