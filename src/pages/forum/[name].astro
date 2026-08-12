@@ -1,21 +1,24 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import {
-  findForum,
+  ensureForumNotificationSpace,
   getForumCategories,
   getForumTopics,
   validateForumName,
 } from '../../lib/forums';
+import { isCuratorSubscribedToSpace } from '../../lib/spaces';
 import { getCurrentCurator } from '../../lib/auth';
 
 const { name } = Astro.params;
 const forumName = typeof name === 'string' ? name : '';
 const isValid = validateForumName(forumName);
-const forum = isValid ? await findForum(forumName) : null;
+const forum = isValid ? await ensureForumNotificationSpace(forumName) : null;
 const categories = forum ? await getForumCategories(forumName) : [];
 const topics = forum ? await getForumTopics(forumName, undefined, undefined, 50) : [];
 const currentCurator = await getCurrentCurator(Astro.cookies);
 const currentUser = currentCurator ? { id: currentCurator.id, username: currentCurator.username } : null;
+const notificationSpace = forum?.notification_space ?? null;
+const isSubscribed = currentCurator && notificationSpace ? await isCuratorSubscribedToSpace(currentCurator.id, notificationSpace) : false;
 ---
 
 <Layout title={forum?.title ? `${forum.title} · openbin` : `${forumName} · openbin`}>
@@ -28,6 +31,21 @@ const currentUser = currentCurator ? { id: currentCurator.id, username: currentC
           {forum?.description && <p class="text-xs text-muted">{forum.description}</p>}
         </div>
         <div class="flex items-center gap-2">
+          <button
+            id="subscribe-toggle"
+            type="button"
+            class="hidden h-8 border border-surface-light px-3 text-xs font-medium text-main transition hover:bg-surface-light"
+          >
+            Subscribe
+          </button>
+          <button
+            id="push-toggle"
+            type="button"
+            class="hidden h-8 border border-surface-light px-3 text-xs font-medium text-main transition hover:bg-surface-light disabled:opacity-50"
+            disabled
+          >
+            Enable notifications
+          </button>
           <button
             type="button"
             data-report-forum
@@ -257,7 +275,7 @@ const currentUser = currentCurator ? { id: currentCurator.id, username: currentC
   )}
 </Layout>
 
-<script is:inline define:vars={{ forumName, isValid, currentUser, categories: categories.map(c => ({ id: c.id, name: c.name })) }}>
+<script is:inline define:vars={{ forumName, isValid, currentUser, notificationSpace, isSubscribed: isSubscribed, isLoggedIn: Boolean(currentCurator), categories: categories.map(c => ({ id: c.id, name: c.name })) }}>
   const newCategoryBtn = document.getElementById('new-category-btn');
   const newTopicBtn = document.getElementById('new-topic-btn');
   const categoryPanel = document.getElementById('category-panel');
@@ -270,10 +288,13 @@ const currentUser = currentCurator ? { id: currentCurator.id, username: currentC
   const topicError = document.getElementById('topic-error');
   const categoryPills = document.querySelectorAll('.category-pill');
   const topicsEl = document.getElementById('topics');
+  const subscribeToggle = document.getElementById('subscribe-toggle');
+  const pushToggle = document.getElementById('push-toggle');
 
   if (isValid) {
     newCategoryBtn?.classList.remove('hidden');
     newTopicBtn?.classList.remove('hidden');
+    if (notificationSpace) subscribeToggle?.classList.remove('hidden');
   }
 
   function open(panel) { if (panel) panel.classList.remove('hidden'); }
@@ -518,5 +539,181 @@ const currentUser = currentCurator ? { id: currentCurator.id, username: currentC
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  // Subscription and push notifications
+  if (notificationSpace) {
+    if (subscribeToggle) subscribeToggle.classList.remove('hidden');
+
+    const SUBS_KEY = 'space:subs';
+
+    function getLocalSubs() {
+      try {
+        return JSON.parse(localStorage.getItem(SUBS_KEY) || '[]');
+      } catch {
+        return [];
+      }
+    }
+
+    function setLocalSubs(subs) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(SUBS_KEY, JSON.stringify(subs));
+      }
+    }
+
+    function updateSubscribeUI(subscribed) {
+      if (subscribeToggle) subscribeToggle.textContent = subscribed ? 'Unsubscribe' : 'Subscribe';
+    }
+
+    let isSubscribed = false;
+
+    async function loadSubscriptionState() {
+      if (isLoggedIn) {
+        try {
+          const res = await fetch('/api/curators/spaces');
+          const data = await res.json();
+          if (res.ok) {
+            isSubscribed = Array.isArray(data.spaces) && data.spaces.includes(notificationSpace);
+            updateSubscribeUI(isSubscribed);
+          }
+        } catch {}
+      } else {
+        isSubscribed = getLocalSubs().includes(notificationSpace);
+        updateSubscribeUI(isSubscribed);
+      }
+    }
+
+    loadSubscriptionState().catch(() => {});
+
+    if (subscribeToggle) {
+      subscribeToggle.addEventListener('click', async () => {
+        if (isLoggedIn) {
+          try {
+            const res = await fetch('/api/curators/spaces', {
+              method: isSubscribed ? 'DELETE' : 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: notificationSpace }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to update subscription');
+            isSubscribed = Array.isArray(data.spaces) && data.spaces.includes(notificationSpace);
+            updateSubscribeUI(isSubscribed);
+          } catch (err) {
+            alert(err.message);
+          }
+        } else {
+          const subs = getLocalSubs();
+          const idx = subs.indexOf(notificationSpace);
+          if (idx >= 0) subs.splice(idx, 1);
+          else subs.push(notificationSpace);
+          setLocalSubs(subs);
+          isSubscribed = idx < 0;
+          updateSubscribeUI(isSubscribed);
+        }
+      });
+    }
+
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      pushToggle.classList.remove('hidden');
+
+      let registration;
+      let currentSubscription;
+      let vapidPublicKey;
+      const pushKey = `space:push:${notificationSpace}`;
+
+      function getPushEnabled() {
+        try {
+          return localStorage.getItem(pushKey) === '1';
+        } catch {
+          return false;
+        }
+      }
+
+      function setPushEnabled(enabled) {
+        try {
+          if (enabled) localStorage.setItem(pushKey, '1');
+          else localStorage.removeItem(pushKey);
+        } catch {}
+      }
+
+      async function subscribe() {
+        if (Notification.permission === 'default') {
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            pushToggle.textContent = 'Push denied';
+            pushToggle.disabled = true;
+            return null;
+          }
+        }
+        const sub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidPublicKey,
+        });
+        await fetch(`/s/${encodeURIComponent(notificationSpace)}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub),
+        });
+        setPushEnabled(true);
+        return sub;
+      }
+
+      async function unsubscribe() {
+        if (!currentSubscription) return;
+        await currentSubscription.unsubscribe();
+        await fetch(`/s/${encodeURIComponent(notificationSpace)}/subscribe`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: currentSubscription.endpoint }),
+        });
+        setPushEnabled(false);
+      }
+
+      async function initPush() {
+        const keyRes = await fetch('/s/key');
+        const data = await keyRes.json();
+        vapidPublicKey = data.publicKey;
+        if (!vapidPublicKey) {
+          pushToggle.textContent = 'Push not configured';
+          pushToggle.disabled = true;
+          return;
+        }
+        if (Notification.permission === 'denied') {
+          pushToggle.textContent = 'Push denied';
+          pushToggle.disabled = true;
+          return;
+        }
+        pushToggle.disabled = false;
+        registration = await navigator.serviceWorker.register('/service-worker.js');
+        currentSubscription = await registration.pushManager.getSubscription();
+
+        if (!currentSubscription && Notification.permission === 'granted' && getPushEnabled()) {
+          currentSubscription = await subscribe();
+        }
+
+        pushToggle.textContent = currentSubscription ? 'Disable notifications' : 'Enable notifications';
+      }
+
+      initPush().catch(() => {});
+
+      pushToggle.addEventListener('click', async () => {
+        try {
+          if (!vapidPublicKey) return;
+          if (Notification.permission === 'denied') {
+            alert('Push notifications are blocked. Allow them in your browser settings for this site.');
+            return;
+          }
+          if (currentSubscription) {
+            await unsubscribe();
+            currentSubscription = null;
+          } else {
+            currentSubscription = await subscribe();
+          }
+          pushToggle.textContent = currentSubscription ? 'Disable notifications' : 'Enable notifications';
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
   }
 </script>

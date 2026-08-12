@@ -200,3 +200,59 @@ export async function isCuratorSubscribedToSpace(curatorId: string, name: string
   `;
   return Number(rows[0]?.count || 0) > 0;
 }
+
+export interface CuratorSubscription {
+  type: 'space' | 'blog' | 'forum' | 'group';
+  name: string;
+  title: string | null;
+  link: string;
+}
+
+export async function getCuratorSubscriptions(curatorId: string): Promise<CuratorSubscription[]> {
+  await ensureSchema();
+  const pool = getPool();
+
+  const spaceNames = await getCuratorSpaceSubscriptions(curatorId);
+  const spaceNamesCsv = spaceNames.join(',');
+  const [{ rows: blogs }, { rows: forums }, { rows: groups }] = await Promise.all([
+    pool.sql<{ name: string; title: string | null; notification_space: string }>`
+      SELECT name, title, notification_space FROM blogs
+      WHERE notification_space = ANY(string_to_array(${spaceNamesCsv}, ','))
+    `,
+    pool.sql<{ name: string; title: string | null; notification_space: string }>`
+      SELECT name, title, notification_space FROM forums
+      WHERE notification_space = ANY(string_to_array(${spaceNamesCsv}, ','))
+    `,
+    pool.sql<{ name: string; title: string | null }>`
+      SELECT g.name, g.title
+      FROM group_members gm
+      JOIN groups g ON g.name = gm.group_name
+      WHERE gm.curator_id = ${curatorId}
+      ORDER BY gm.joined_at DESC
+    `,
+  ]);
+
+  const blogBySpace = new Map(blogs.map((b) => [b.notification_space, b]));
+  const forumBySpace = new Map(forums.map((f) => [f.notification_space, f]));
+  const subscriptions: CuratorSubscription[] = [];
+
+  for (const name of spaceNames) {
+    const blog = blogBySpace.get(name);
+    if (blog) {
+      subscriptions.push({ type: 'blog', name: blog.name, title: blog.title, link: `/blog/${blog.name}` });
+      continue;
+    }
+    const forum = forumBySpace.get(name);
+    if (forum) {
+      subscriptions.push({ type: 'forum', name: forum.name, title: forum.title, link: `/forum/${forum.name}` });
+      continue;
+    }
+    subscriptions.push({ type: 'space', name, title: null, link: `/s/${name}` });
+  }
+
+  for (const g of groups) {
+    subscriptions.push({ type: 'group', name: g.name, title: g.title, link: `/group/${g.name}` });
+  }
+
+  return subscriptions;
+}

@@ -7,6 +7,7 @@ import {
   validateForumName,
 } from '../../../lib/forums';
 import { getCurrentCurator } from '../../../lib/auth';
+import type { ForumReplyRecord } from '../../../lib/db';
 
 const { name, topic_id } = Astro.params;
 const forumName = typeof name === 'string' ? name : '';
@@ -19,19 +20,10 @@ const replies = topic ? await getForumReplies(topicId) : [];
 const currentCurator = await getCurrentCurator(Astro.cookies);
 const currentUser = currentCurator ? { id: currentCurator.id, username: currentCurator.username } : null;
 
-type ReplyNode = {
-  id: number;
-  topic_id: number;
-  parent_id: number | null;
-  author: string;
-  content: string;
-  curator_id: string | null;
-  created_at: string;
-  children: ReplyNode[];
-};
+type ReplyNode = ForumReplyRecord & { children: ReplyNode[] };
 
-function buildTree(replies: ReplyNode[]): ReplyNode[] {
-  const byParent = new Map<number, ReplyNode[]>();
+function buildTree(replies: ForumReplyRecord[]): ReplyNode[] {
+  const byParent = new Map<number, ForumReplyRecord[]>();
   for (const r of replies) {
     const key = r.parent_id ?? 0;
     if (!byParent.has(key)) byParent.set(key, []);
@@ -40,7 +32,7 @@ function buildTree(replies: ReplyNode[]): ReplyNode[] {
 
   function render(parentId: number): ReplyNode[] {
     const children = byParent.get(parentId) || [];
-    return children.map((r) => ({
+    return children.map((r): ReplyNode => ({
       ...r,
       children: render(r.id),
     }));

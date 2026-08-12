@@ -165,6 +165,9 @@ export async function createBlogPost(
   const code = input.code.trim().toUpperCase();
   if (!code) throw new Error('2FA code is required');
 
+  const blog = await findBlog(blogName);
+  if (!blog) throw new Error('Blog not found');
+
   const valid = await verify2FAChallenge(blogName, code);
   if (!valid) throw new Error('Invalid or expired 2FA code');
 
@@ -177,6 +180,19 @@ export async function createBlogPost(
   if (!rows[0]) throw new Error('Could not create blog post');
 
   await pool.sql`UPDATE blogs SET updated_at = NOW() WHERE name = ${blogName}`;
+
+  if (blog.notification_space) {
+    try {
+      await publishToSpace(blog.notification_space, {
+        title: `New post in /${blogName}`,
+        message: title,
+        tags: `blog,${blogName}`,
+      });
+    } catch (error) {
+      console.error('Blog post notification error:', error);
+    }
+  }
+
   return rows[0];
 }
 

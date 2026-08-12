@@ -8,6 +8,7 @@ import {
   type ForumReportRecord,
   type CuratorRecord,
 } from './db';
+import { getOrCreateSpace, publishToSpace, validateSpaceName } from './spaces';
 
 const FORUM_NAME_RE = /^[a-zA-Z0-9_-]{3,64}$/;
 const MAX_TITLE_LENGTH = 200;
@@ -24,6 +25,7 @@ export interface CreateForumInput {
   name: string;
   title?: string | null;
   description?: string | null;
+  notification_space?: string | null;
   curator_id?: string | null;
 }
 
@@ -55,8 +57,31 @@ export async function findForum(name: string): Promise<ForumRecord | null> {
   return rows[0] ?? null;
 }
 
+function getDefaultForumNotificationSpace(name: string): string {
+  const prefix = 'forum-';
+  return name.length + prefix.length <= 64 ? `${prefix}${name}` : name;
+}
+
+export async function ensureForumNotificationSpace(name: string): Promise<ForumRecord | null> {
+  if (!validateForumName(name)) return null;
+  await ensureSchema();
+
+  const forum = await findForum(name);
+  if (!forum) return null;
+  if (forum.notification_space) return forum;
+
+  const defaultSpace = getDefaultForumNotificationSpace(name);
+  if (!validateSpaceName(defaultSpace)) return null;
+  await getOrCreateSpace(defaultSpace);
+
+  const { rows } = await getPool().sql<ForumRecord>`
+    UPDATE forums SET notification_space = ${defaultSpace} WHERE name = ${name} RETURNING *
+  `;
+  return rows[0] ?? null;
+}
+
 export async function getOrCreateForum(input: CreateForumInput): Promise<ForumRecord> {
-  const { name, title, description } = input;
+  const { name, title, description, notification_space } = input;
   if (!validateForumName(name)) throw new Error('Invalid forum name');
 
   await ensureSchema();
@@ -67,10 +92,14 @@ export async function getOrCreateForum(input: CreateForumInput): Promise<ForumRe
 
   const safeTitle = title?.trim() || null;
   const safeDescription = description?.trim() || null;
+  const safeNotificationSpace = notification_space?.trim() || getDefaultForumNotificationSpace(name);
+  if (!validateSpaceName(safeNotificationSpace)) throw new Error('Invalid notification space name');
+
+  await getOrCreateSpace(safeNotificationSpace);
 
   const { rows: inserted } = await pool.sql<ForumRecord>`
-    INSERT INTO forums (name, title, description, curator_id)
-    VALUES (${name}, ${safeTitle}, ${safeDescription}, ${input.curator_id ?? null})
+    INSERT INTO forums (name, title, description, notification_space, curator_id)
+    VALUES (${name}, ${safeTitle}, ${safeDescription}, ${safeNotificationSpace}, ${input.curator_id ?? null})
     RETURNING *
   `;
   if (!inserted[0]) throw new Error('Could not create forum');
@@ -186,6 +215,9 @@ export async function createForumTopic(
   if (author.length > MAX_AUTHOR_LENGTH) throw new Error(`Author too long (max ${MAX_AUTHOR_LENGTH})`);
   if (content && content.length > MAX_CONTENT_LENGTH) throw new Error(`Content too long (max ${MAX_CONTENT_LENGTH})`);
 
+  const forum = await ensureForumNotificationSpace(forumName);
+  if (!forum) throw new Error('Forum not found');
+
   const pool = getPool();
 
   if (categoryId) {
@@ -203,6 +235,19 @@ export async function createForumTopic(
   if (!rows[0]) throw new Error('Could not create topic');
 
   await pool.sql`UPDATE forums SET updated_at = NOW() WHERE name = ${forumName}`;
+
+  if (forum.notification_space) {
+    try {
+      await publishToSpace(forum.notification_space, {
+        title: `New topic in /${forumName}`,
+        message: title,
+        tags: `forum,${forumName}`,
+      });
+    } catch (error) {
+      console.error('Forum topic notification error:', error);
+    }
+  }
+
   return rows[0];
 }
 
@@ -257,6 +302,20 @@ export async function createForumReply(
 
   await pool.sql`UPDATE forums SET updated_at = NOW() WHERE name = ${topic[0].forum_name}`;
   await pool.sql`UPDATE forum_topics SET updated_at = NOW() WHERE id = ${topicId}`;
+
+  const forum = await ensureForumNotificationSpace(topic[0].forum_name);
+  if (forum?.notification_space) {
+    try {
+      await publishToSpace(forum.notification_space, {
+        title: `New reply in /${topic[0].forum_name}`,
+        message: content.length > 300 ? `${content.slice(0, 300)}...` : content,
+        tags: `forum,${topic[0].forum_name}`,
+      });
+    } catch (error) {
+      console.error('Forum reply notification error:', error);
+    }
+  }
+
   return rows[0];
 }
 

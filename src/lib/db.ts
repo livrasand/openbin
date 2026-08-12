@@ -155,6 +155,7 @@ export interface ForumRecord {
   name: string;
   title: string | null;
   description: string | null;
+  notification_space: string | null;
   curator_id: string | null;
   created_at: string;
   updated_at: string;
@@ -195,6 +196,34 @@ export interface ForumReportRecord {
   target_type: string;
   target_id: string;
   reason: string;
+  created_at: string;
+}
+
+export interface GroupRecord {
+  name: string;
+  title: string | null;
+  description: string | null;
+  access: 'open' | 'moderated';
+  creator_id: string;
+  notification_space: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupMemberRecord {
+  group_name: string;
+  curator_id: string;
+  role: 'creator' | 'member' | 'pending';
+  joined_at: string;
+}
+
+export interface GroupMessageRecord {
+  id: number;
+  group_name: string;
+  parent_id: number | null;
+  author: string;
+  content: string;
+  curator_id: string | null;
   created_at: string;
 }
 
@@ -477,6 +506,7 @@ export async function ensureSchema(): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  await p.sql`ALTER TABLE forums ADD COLUMN IF NOT EXISTS notification_space VARCHAR(64) REFERENCES spaces(name) ON DELETE SET NULL`;
   await p.sql`ALTER TABLE forums ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_forums_updated_at ON forums(updated_at)`;
 
@@ -533,6 +563,46 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_forum_reports_target ON forum_reports(target_type, target_id)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS groups (
+      name VARCHAR(64) PRIMARY KEY,
+      title TEXT,
+      description TEXT,
+      access VARCHAR(20) NOT NULL CHECK (access IN ('open', 'moderated')),
+      creator_id CHAR(16) NOT NULL REFERENCES curators(id) ON DELETE CASCADE,
+      notification_space VARCHAR(64) REFERENCES spaces(name) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_groups_creator_id ON groups(creator_id)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_groups_updated_at ON groups(updated_at)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS group_members (
+      group_name VARCHAR(64) NOT NULL REFERENCES groups(name) ON DELETE CASCADE,
+      curator_id CHAR(16) NOT NULL REFERENCES curators(id) ON DELETE CASCADE,
+      role VARCHAR(20) NOT NULL DEFAULT 'member' CHECK (role IN ('creator', 'member', 'pending')),
+      joined_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (group_name, curator_id)
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_group_members_curator_id ON group_members(curator_id)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS group_messages (
+      id BIGSERIAL PRIMARY KEY,
+      group_name VARCHAR(64) NOT NULL REFERENCES groups(name) ON DELETE CASCADE,
+      parent_id BIGINT REFERENCES group_messages(id) ON DELETE CASCADE,
+      author TEXT NOT NULL,
+      content TEXT NOT NULL,
+      curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_group_messages_group_name_created_at ON group_messages(group_name, created_at DESC)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_group_messages_parent_id ON group_messages(parent_id)`;
 
   await p.sql`
     CREATE TABLE IF NOT EXISTS pending_uploads (

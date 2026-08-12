@@ -23,9 +23,16 @@ export async function POST(context: APIContext): Promise<Response> {
     const body = (await context.request.json().catch(() => ({}))) as Record<string, unknown>;
     const title = typeof body.title === 'string' ? body.title.trim() : null;
     const description = typeof body.description === 'string' ? body.description.trim() : null;
+    const notificationSpace = typeof body.notification_space === 'string' ? body.notification_space.trim() : null;
 
     const curator = await getCurrentCurator(context.cookies);
-    const input: CreateForumInput = { name, title, description, curator_id: curator ? curator.id : null };
+    const input: CreateForumInput = {
+      name,
+      title,
+      description,
+      notification_space: notificationSpace,
+      curator_id: curator ? curator.id : null,
+    };
     const forum = await getOrCreateForum(input);
     return jsonResponse({ forum });
   } catch (error: unknown) {

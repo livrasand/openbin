@@ -1,10 +1,10 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getCurrentCurator } from '../../lib/auth';
-import { getCuratorSpaceSubscriptions } from '../../lib/spaces';
+import { getCuratorSubscriptions, type CuratorSubscription } from '../../lib/spaces';
 
 const curator = await getCurrentCurator(Astro.cookies);
-const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id) : [];
+const subscriptions: CuratorSubscription[] = curator ? await getCuratorSubscriptions(curator.id) : [];
 ---
 
 <Layout title="Openbin Spaces">
@@ -51,7 +51,7 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
         </button>
       </form>
 
-      <div class="mt-4 grid grid-cols-2 gap-2">
+      <div class="mt-4 grid grid-cols-3 gap-2">
         <button
           type="button"
           id="create-blog-btn"
@@ -65,6 +65,13 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
           class="h-8 border border-surface-light bg-surface px-2 text-xs text-main transition hover:bg-surface-light"
         >
           Create forum
+        </button>
+        <button
+          type="button"
+          id="create-group-btn"
+          class="h-8 border border-surface-light bg-surface px-2 text-xs text-main transition hover:bg-surface-light"
+        >
+          Create group
         </button>
       </div>
 
@@ -120,6 +127,16 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
           class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
         />
         <input
+          id="forum-notification-space"
+          type="text"
+          placeholder="notification space (optional)"
+          minlength="3"
+          maxlength="64"
+          pattern="[a-zA-Z0-9_-]{3,64}"
+          title="3–64 letters, numbers, underscores or dashes"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <input
           id="forum-title"
           type="text"
           placeholder="title (optional)"
@@ -134,6 +151,47 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
         </button>
       </form>
 
+      <form id="group-form" class="hidden mt-4 flex flex-col gap-3 border-t border-surface-light pt-4">
+        <p class="text-xs font-medium text-main">Create a private group</p>
+        <input
+          id="group-name"
+          type="text"
+          placeholder="mygroup"
+          required
+          minlength="3"
+          maxlength="64"
+          pattern="[a-zA-Z0-9_-]{3,64}"
+          title="3–64 letters, numbers, underscores or dashes"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <input
+          id="group-title"
+          type="text"
+          placeholder="title (optional)"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none"
+        />
+        <textarea
+          id="group-description"
+          rows="2"
+          placeholder="welcome message (optional)"
+          class="w-full border border-surface-light bg-background px-3 py-2 text-xs text-main placeholder:text-muted focus:border-secondary focus:outline-none resize-none"
+        ></textarea>
+        <select
+          id="group-access"
+          class="h-8 border border-surface-light bg-background px-3 text-xs text-main focus:border-secondary focus:outline-none"
+        >
+          <option value="open">Anyone with the link can join</option>
+          <option value="moderated">Require moderation</option>
+        </select>
+        <p id="group-error" class="hidden text-xs text-red-400"></p>
+        <button
+          type="submit"
+          class="h-8 border border-primary bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90"
+        >
+          Create group
+        </button>
+      </form>
+
       <div class="mt-6 text-[10px] text-muted">
         <p class="mb-1">Publish from anywhere:</p>
         <code class="block text-main bg-background border border-surface-light p-2 break-all font-mono">
@@ -142,14 +200,16 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
       </div>
 
       <div class="mt-6" id="subscribed-section">
-        <p class="text-xs font-medium text-main mb-2">Subscribed spaces</p>
-        <ul class="text-xs text-main" id="subscribed-spaces" data-logged-in={!!curator} data-spaces={JSON.stringify(subscribedSpaces)}>
-          {subscribedSpaces.length === 0 ? (
+        <p class="text-xs font-medium text-main mb-2">Subscriptions</p>
+        <ul class="text-xs text-main" id="subscribed-spaces" data-logged-in={!!curator}>
+          {subscriptions.length === 0 ? (
             <li class="text-muted" id="no-subscriptions">No subscriptions yet.</li>
           ) : (
-            subscribedSpaces.map((name) => (
-              <li>
-                <a href={`/s/${name}`} class="text-primary hover:underline">/{name}</a>
+            subscriptions.map((sub) => (
+              <li class="flex items-center gap-2">
+                <span class="text-[10px] text-muted uppercase">{sub.type}</span>
+                <a href={sub.link} class="text-primary hover:underline">/{sub.name}</a>
+                {sub.title && <span class="text-muted">· {sub.title}</span>}
               </li>
             ))
           )}
@@ -202,18 +262,23 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
 
   const createBlogBtn = document.getElementById('create-blog-btn');
   const createForumBtn = document.getElementById('create-forum-btn');
+  const createGroupBtn = document.getElementById('create-group-btn');
   const blogForm = document.getElementById('blog-form');
   const forumForm = document.getElementById('forum-form');
+  const groupForm = document.getElementById('group-form');
 
   function toggleForm(show) {
     if (blogForm) blogForm.classList.add('hidden');
     if (forumForm) forumForm.classList.add('hidden');
+    if (groupForm) groupForm.classList.add('hidden');
     if (show === 'blog' && blogForm) blogForm.classList.remove('hidden');
     if (show === 'forum' && forumForm) forumForm.classList.remove('hidden');
+    if (show === 'group' && groupForm) groupForm.classList.remove('hidden');
   }
 
   if (createBlogBtn) createBlogBtn.addEventListener('click', () => toggleForm('blog'));
   if (createForumBtn) createForumBtn.addEventListener('click', () => toggleForm('forum'));
+  if (createGroupBtn) createGroupBtn.addEventListener('click', () => toggleForm('group'));
 
   const blogNameInput = document.getElementById('blog-name');
   const blogNotificationInput = document.getElementById('blog-notification-space');
@@ -250,6 +315,7 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
   }
 
   const forumNameInput = document.getElementById('forum-name');
+  const forumNotificationInput = document.getElementById('forum-notification-space');
   const forumTitleInput = document.getElementById('forum-title');
   const forumError = document.getElementById('forum-error');
 
@@ -257,10 +323,16 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
     forumForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = forumNameInput.value.trim();
+      const notificationSpace = forumNotificationInput.value.trim();
       const title = forumTitleInput.value.trim() || null;
 
       if (!/^[a-zA-Z0-9_-]{3,64}$/.test(name)) {
         forumError.textContent = 'Use 3–64 letters, numbers, underscores or dashes.';
+        forumError.classList.remove('hidden');
+        return;
+      }
+      if (notificationSpace && !/^[a-zA-Z0-9_-]{3,64}$/.test(notificationSpace)) {
+        forumError.textContent = 'Notification space must be 3–64 letters, numbers, underscores or dashes.';
         forumError.classList.remove('hidden');
         return;
       }
@@ -269,7 +341,10 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
         const res = await fetch(`/api/forums/${encodeURIComponent(name)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title }),
+          body: JSON.stringify({
+            title,
+            notification_space: notificationSpace || undefined,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Could not create forum');
@@ -277,6 +352,42 @@ const subscribedSpaces = curator ? await getCuratorSpaceSubscriptions(curator.id
       } catch (err) {
         forumError.textContent = err.message;
         forumError.classList.remove('hidden');
+      }
+    });
+  }
+
+  const groupNameInput = document.getElementById('group-name');
+  const groupTitleInput = document.getElementById('group-title');
+  const groupDescriptionInput = document.getElementById('group-description');
+  const groupAccessInput = document.getElementById('group-access');
+  const groupError = document.getElementById('group-error');
+
+  if (groupForm) {
+    groupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = groupNameInput.value.trim();
+      const title = groupTitleInput.value.trim() || null;
+      const description = groupDescriptionInput.value.trim() || null;
+      const access = groupAccessInput.value;
+
+      if (!/^[a-zA-Z0-9_-]{3,64}$/.test(name)) {
+        groupError.textContent = 'Use 3–64 letters, numbers, underscores or dashes.';
+        groupError.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/groups/${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description, access }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not create group');
+        window.location.href = `/group/${encodeURIComponent(name)}`;
+      } catch (err) {
+        groupError.textContent = err.message;
+        groupError.classList.remove('hidden');
       }
     });
   }
