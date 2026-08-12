@@ -103,6 +103,8 @@ export interface BlogRecord {
   title: string | null;
   description: string | null;
   curator_id: string | null;
+  feed_url: string | null;
+  last_fetched_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +116,8 @@ export interface BlogPostRecord {
   author: string;
   content: string;
   curator_id: string | null;
+  rss_guid: string | null;
+  rss_link: string | null;
   created_at: string;
 }
 
@@ -224,6 +228,27 @@ export interface GroupMessageRecord {
   author: string;
   content: string;
   curator_id: string | null;
+  hidden: boolean;
+  hidden_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupReactionRecord {
+  id: number;
+  message_id: number;
+  curator_id: string;
+  emoji: string;
+  created_at: string;
+}
+
+export interface GroupReportRecord {
+  id: number;
+  group_name: string;
+  message_id: number;
+  reporter_id: string | null;
+  reason: string | null;
+  resolved: boolean;
   created_at: string;
 }
 
@@ -432,7 +457,10 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
   await p.sql`ALTER TABLE blogs ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`ALTER TABLE blogs ADD COLUMN IF NOT EXISTS feed_url TEXT`;
+  await p.sql`ALTER TABLE blogs ADD COLUMN IF NOT EXISTS last_fetched_at TIMESTAMPTZ`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_blogs_updated_at ON blogs(updated_at)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blogs_feed_url ON blogs(feed_url)`;
 
   await p.sql`
     CREATE TABLE IF NOT EXISTS blog_posts (
@@ -445,8 +473,11 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
   await p.sql`ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL`;
+  await p.sql`ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS rss_guid TEXT`;
+  await p.sql`ALTER TABLE blog_posts ADD COLUMN IF NOT EXISTS rss_link TEXT`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_posts_blog_name_created_at ON blog_posts(blog_name, created_at DESC)`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_posts_created_at ON blog_posts(created_at)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_blog_posts_rss_guid ON blog_posts(rss_guid)`;
 
   await p.sql`
     CREATE TABLE IF NOT EXISTS blog_2fa_challenges (
@@ -598,11 +629,40 @@ export async function ensureSchema(): Promise<void> {
       author TEXT NOT NULL,
       content TEXT NOT NULL,
       curator_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      hidden BOOLEAN NOT NULL DEFAULT FALSE,
+      hidden_reason TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_group_messages_group_name_created_at ON group_messages(group_name, created_at DESC)`;
   await p.sql`CREATE INDEX IF NOT EXISTS idx_group_messages_parent_id ON group_messages(parent_id)`;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_group_messages_curator_id ON group_messages(curator_id)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS group_reactions (
+      id BIGSERIAL PRIMARY KEY,
+      message_id BIGINT NOT NULL REFERENCES group_messages(id) ON DELETE CASCADE,
+      curator_id CHAR(16) NOT NULL REFERENCES curators(id) ON DELETE CASCADE,
+      emoji VARCHAR(32) NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (message_id, curator_id, emoji)
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_group_reactions_message_id ON group_reactions(message_id)`;
+
+  await p.sql`
+    CREATE TABLE IF NOT EXISTS group_reports (
+      id BIGSERIAL PRIMARY KEY,
+      group_name VARCHAR(64) NOT NULL REFERENCES groups(name) ON DELETE CASCADE,
+      message_id BIGINT NOT NULL REFERENCES group_messages(id) ON DELETE CASCADE,
+      reporter_id CHAR(16) REFERENCES curators(id) ON DELETE SET NULL,
+      reason TEXT,
+      resolved BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await p.sql`CREATE INDEX IF NOT EXISTS idx_group_reports_group_name ON group_reports(group_name, resolved)`;
 
   await p.sql`
     CREATE TABLE IF NOT EXISTS pending_uploads (

@@ -4,6 +4,8 @@ import {
   type GroupRecord,
   type GroupMemberRecord,
   type GroupMessageRecord,
+  type GroupReactionRecord,
+  type GroupReportRecord,
   type CuratorRecord,
 } from './db';
 import { getOrCreateSpace, validateSpaceName } from './spaces';
@@ -32,7 +34,26 @@ export interface GroupMemberWithUser extends GroupMemberRecord {
   username: string;
 }
 
-export type GroupMessageNode = GroupMessageRecord & { children: GroupMessageNode[] };
+export interface GroupReactionSummary {
+  emoji: string;
+  count: number;
+  reacted: boolean;
+}
+
+export type GroupMessageNode = GroupMessageRecord & {
+  children: GroupMessageNode[];
+  reactions: GroupReactionSummary[];
+  can_edit: boolean;
+  can_delete: boolean;
+  is_author: boolean;
+};
+
+export interface GroupReportWithDetails extends GroupReportRecord {
+  author: string;
+  reporter_username: string;
+  message_content: string;
+}
+
 
 export function validateGroupName(name: string): boolean {
   return GROUP_NAME_RE.test(name);
@@ -215,18 +236,6 @@ export async function createGroupMessage(
   return rows[0];
 }
 
-export async function getGroupMessages(name: string, parentId: number | null = null): Promise<GroupMessageRecord[]> {
-  if (!validateGroupName(name)) throw new Error('Invalid group name');
-  await ensureSchema();
-  const safeParentId = parentId && Number.isFinite(parentId) && parentId > 0 ? parentId : null;
-  const { rows } = await getPool().sql<GroupMessageRecord>`
-    SELECT * FROM group_messages
-    WHERE group_name = ${name} AND parent_id IS NOT DISTINCT FROM ${safeParentId}
-    ORDER BY created_at ASC
-  `;
-  return rows;
-}
-
 export async function getAllGroupMessages(name: string): Promise<GroupMessageRecord[]> {
   if (!validateGroupName(name)) throw new Error('Invalid group name');
   await ensureSchema();
@@ -236,7 +245,68 @@ export async function getAllGroupMessages(name: string): Promise<GroupMessageRec
   return rows;
 }
 
-function buildMessageTree(messages: GroupMessageRecord[]): GroupMessageNode[] {
+export async function getGroupMessageById(
+  groupName: string,
+  messageId: number
+): Promise<GroupMessageRecord | null> {
+  if (!validateGroupName(groupName)) throw new Error('Invalid group name');
+  if (!messageId || !Number.isFinite(messageId)) return null;
+  await ensureSchema();
+  const { rows } = await getPool().sql<GroupMessageRecord>`
+    SELECT * FROM group_messages WHERE id = ${messageId} AND group_name = ${groupName} LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+async function hasReplies(messageId: number): Promise<boolean> {
+  await ensureSchema();
+  const { rows } = await getPool().sql<{ count: number }>`
+    SELECT COUNT(*) AS count FROM group_messages WHERE parent_id = ${messageId}
+  `;
+  return Number(rows[0]?.count || 0) > 0;
+}
+
+async function getMessageReactionsForGroup(
+  groupName: string
+): Promise<GroupReactionRecord[]> {
+  await ensureSchema();
+  const { rows } = await getPool().sql<GroupReactionRecord>`
+    SELECT r.*
+    FROM group_reactions r
+    JOIN group_messages m ON m.id = r.message_id
+    WHERE m.group_name = ${groupName}
+  `;
+  return rows;
+}
+
+function aggregateReactions(
+  reactions: GroupReactionRecord[],
+  messageId: number,
+  currentCuratorId?: string
+): GroupReactionSummary[] {
+  const byEmoji = new Map<string, { count: number; reacted: boolean }>();
+  for (const r of reactions) {
+    if (r.message_id !== messageId) continue;
+    const entry = byEmoji.get(r.emoji) || { count: 0, reacted: false };
+    entry.count += 1;
+    if (currentCuratorId && r.curator_id === currentCuratorId) {
+      entry.reacted = true;
+    }
+    byEmoji.set(r.emoji, entry);
+  }
+  return Array.from(byEmoji.entries()).map(([emoji, { count, reacted }]) => ({
+    emoji,
+    count,
+    reacted,
+  }));
+}
+
+function buildMessageTree(
+  messages: GroupMessageRecord[],
+  reactions: GroupReactionRecord[],
+  currentCuratorId?: string,
+  isCreator = false
+): GroupMessageNode[] {
   const byParent = new Map<number | null, GroupMessageRecord[]>();
   for (const m of messages) {
     const key = m.parent_id ?? null;
@@ -246,13 +316,223 @@ function buildMessageTree(messages: GroupMessageRecord[]): GroupMessageNode[] {
 
   function render(parentId: number | null): GroupMessageNode[] {
     const children = byParent.get(parentId) || [];
-    return children.map((m): GroupMessageNode => ({ ...m, children: render(m.id) }));
+    return children.map((m): GroupMessageNode => {
+      const isAuthor = !!currentCuratorId && m.curator_id === currentCuratorId;
+      const inEditWindow =
+        Date.now() - new Date(m.created_at).getTime() <= 5 * 60 * 1000;
+      const hasChildren = byParent.has(m.id) && (byParent.get(m.id)?.length || 0) > 0;
+      return {
+        ...m,
+        children: render(m.id),
+        reactions: aggregateReactions(reactions, m.id, currentCuratorId),
+        can_edit: isAuthor && !m.hidden && inEditWindow,
+        can_delete: (isAuthor || isCreator) && !hasChildren,
+        is_author: isAuthor,
+      };
+    });
   }
 
   return render(null);
 }
 
-export async function getGroupMessageTree(name: string): Promise<GroupMessageNode[]> {
-  const messages = await getAllGroupMessages(name);
-  return buildMessageTree(messages);
+export async function getGroupMessageTree(
+  name: string,
+  currentCuratorId?: string,
+  isCreator = false
+): Promise<GroupMessageNode[]> {
+  const [messages, reactions] = await Promise.all([
+    getAllGroupMessages(name),
+    getMessageReactionsForGroup(name),
+  ]);
+  return buildMessageTree(messages, reactions, currentCuratorId, isCreator);
+}
+
+export async function updateGroupMessage(
+  groupName: string,
+  messageId: number,
+  curator: CuratorRecord,
+  content: string
+): Promise<GroupMessageRecord> {
+  if (!validateGroupName(groupName)) throw new Error('Invalid group name');
+  await ensureSchema();
+
+  const message = await getGroupMessageById(groupName, messageId);
+  if (!message) throw new Error('Message not found');
+  if (message.hidden) throw new Error('Cannot edit a hidden message');
+  if (message.curator_id !== curator.id) throw new Error('Only the author can edit');
+  if (Date.now() - new Date(message.created_at).getTime() > 5 * 60 * 1000) {
+    throw new Error('The 5-minute edit window has expired');
+  }
+
+  const safeContent = content.trim();
+  if (!safeContent) throw new Error('Message content is required');
+  if (safeContent.length > MAX_MESSAGE_LENGTH) {
+    throw new Error(`Content too long (max ${MAX_MESSAGE_LENGTH})`);
+  }
+
+  const { rows } = await getPool().sql<GroupMessageRecord>`
+    UPDATE group_messages
+    SET content = ${safeContent}, updated_at = NOW()
+    WHERE id = ${messageId}
+    RETURNING *
+  `;
+  if (!rows[0]) throw new Error('Could not update message');
+  return rows[0];
+}
+
+export async function deleteGroupMessage(
+  groupName: string,
+  messageId: number,
+  curator: CuratorRecord
+): Promise<void> {
+  if (!validateGroupName(groupName)) throw new Error('Invalid group name');
+  await ensureSchema();
+
+  const message = await getGroupMessageById(groupName, messageId);
+  if (!message) throw new Error('Message not found');
+
+  const role = await getGroupMemberRole(curator.id, groupName);
+  if (!role) throw new Error('Membership required');
+  if (message.curator_id !== curator.id && role !== 'creator') {
+    throw new Error('Only the author or creator can delete');
+  }
+
+  if (await hasReplies(messageId)) {
+    throw new Error('Cannot delete a message that has replies');
+  }
+
+  await getPool().sql`DELETE FROM group_messages WHERE id = ${messageId}`;
+}
+
+export async function hideGroupMessage(
+  groupName: string,
+  messageId: number,
+  curator: CuratorRecord,
+  reason?: string | null
+): Promise<GroupMessageRecord> {
+  if (!validateGroupName(groupName)) throw new Error('Invalid group name');
+  await ensureSchema();
+
+  const role = await getGroupMemberRole(curator.id, groupName);
+  if (role !== 'creator') throw new Error('Only the creator can hide messages');
+
+  const message = await getGroupMessageById(groupName, messageId);
+  if (!message) throw new Error('Message not found');
+
+  const safeReason = reason?.trim() || 'Este mensaje se ocultó porque no respetó las reglas.';
+  const { rows } = await getPool().sql<GroupMessageRecord>`
+    UPDATE group_messages
+    SET hidden = TRUE, hidden_reason = ${safeReason}
+    WHERE id = ${messageId}
+    RETURNING *
+  `;
+  if (!rows[0]) throw new Error('Could not hide message');
+
+  await resolveGroupReportsForMessage(groupName, messageId);
+  return rows[0];
+}
+
+export async function addOrRemoveGroupReaction(
+  groupName: string,
+  messageId: number,
+  curator: CuratorRecord,
+  emoji: string
+): Promise<boolean> {
+  if (!validateGroupName(groupName)) throw new Error('Invalid group name');
+  if (!(await isGroupMember(curator.id, groupName))) {
+    throw new Error('You are not a member of this group');
+  }
+
+  const message = await getGroupMessageById(groupName, messageId);
+  if (!message) throw new Error('Message not found');
+
+  const safeEmoji = emoji.trim().slice(0, 32);
+  if (!safeEmoji) throw new Error('Invalid emoji');
+
+  const pool = getPool();
+  const { rows } = await pool.sql<GroupReactionRecord>`
+    SELECT * FROM group_reactions
+    WHERE message_id = ${messageId} AND curator_id = ${curator.id} AND emoji = ${safeEmoji}
+    LIMIT 1
+  `;
+
+  if (rows[0]) {
+    await pool.sql`DELETE FROM group_reactions WHERE id = ${rows[0].id}`;
+    return false;
+  }
+
+  await pool.sql`
+    INSERT INTO group_reactions (message_id, curator_id, emoji)
+    VALUES (${messageId}, ${curator.id}, ${safeEmoji})
+  `;
+  return true;
+}
+
+export async function reportGroupMessage(
+  groupName: string,
+  messageId: number,
+  reporter: CuratorRecord,
+  reason?: string | null
+): Promise<void> {
+  if (!validateGroupName(groupName)) throw new Error('Invalid group name');
+  if (!(await isGroupMember(reporter.id, groupName))) {
+    throw new Error('You are not a member of this group');
+  }
+
+  const message = await getGroupMessageById(groupName, messageId);
+  if (!message) throw new Error('Message not found');
+
+  await getPool().sql`
+    INSERT INTO group_reports (group_name, message_id, reporter_id, reason)
+    VALUES (${groupName}, ${messageId}, ${reporter.id}, ${reason?.trim() || null})
+  `;
+}
+
+async function resolveGroupReportsForMessage(
+  groupName: string,
+  messageId: number
+): Promise<void> {
+  await getPool().sql`
+    UPDATE group_reports SET resolved = TRUE
+    WHERE group_name = ${groupName} AND message_id = ${messageId}
+  `;
+}
+
+export async function getGroupReports(
+  groupName: string,
+  curatorId: string
+): Promise<GroupReportWithDetails[]> {
+  if (!validateGroupName(groupName)) throw new Error('Invalid group name');
+  const role = await getGroupMemberRole(curatorId, groupName);
+  if (role !== 'creator') throw new Error('Only the creator can view reports');
+
+  const { rows } = await getPool().sql<GroupReportWithDetails>`
+    SELECT r.*, m.author, m.content AS message_content, c.username AS reporter_username
+    FROM group_reports r
+    JOIN group_messages m ON m.id = r.message_id
+    LEFT JOIN curators c ON c.id = r.reporter_id
+    WHERE r.group_name = ${groupName} AND r.resolved = FALSE
+    ORDER BY r.created_at DESC
+  `;
+  return rows;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const URL_RE = /https?:\/\/[^\s<]+/g;
+
+export function linkifyMessageContent(text: string): string {
+  const escaped = escapeHtml(text);
+  return escaped.replace(
+    URL_RE,
+    (url) =>
+      `<a href="${url}" target="_blank" rel="noopener nofollow" class="text-primary underline break-all">${url}</a><span class="text-[10px] text-muted ml-1" title="Ten cuidado al abrir enlaces fuera de Openbin">(cuidado)</span>`
+  );
 }

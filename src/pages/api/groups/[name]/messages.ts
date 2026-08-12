@@ -2,6 +2,7 @@ import type { APIContext } from 'astro';
 import { getCurrentCurator } from '../../../../lib/auth';
 import {
   createGroupMessage,
+  getGroupMemberRole,
   getGroupMessageTree,
   isGroupMember,
   validateGroupName,
@@ -16,11 +17,12 @@ export async function GET(context: APIContext): Promise<Response> {
     }
 
     const curator = await getCurrentCurator(context.cookies);
-    if (!curator || !(await isGroupMember(curator.id, name))) {
+    const role = curator ? await getGroupMemberRole(curator.id, name) : null;
+    if (role !== 'creator' && role !== 'member') {
       return jsonResponse({ error: 'Membership required' }, 403);
     }
 
-    const messages = await getGroupMessageTree(name);
+    const messages = await getGroupMessageTree(name, curator?.id, role === 'creator');
     return jsonResponse({ messages });
   } catch (error: unknown) {
     console.error('Group messages GET error:', error);

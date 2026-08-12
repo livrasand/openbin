@@ -9,7 +9,12 @@ import {
   type BlogReportRecord,
   type CuratorRecord,
 } from './db';
-import { getOrCreateSpace, publishToSpace, validateSpaceName } from './spaces';
+import {
+  getOrCreateSpace,
+  publishToSpace,
+  validateSpaceName,
+  subscribeCuratorToSpace,
+} from './spaces';
 import { randomBytes } from 'node:crypto';
 
 const BLOG_NAME_RE = /^[a-zA-Z0-9_-]{3,64}$/;
@@ -68,7 +73,183 @@ export async function getOrCreateBlog(input: CreateBlogInput): Promise<BlogRecor
     RETURNING *
   `;
   if (!inserted[0]) throw new Error('Could not create blog');
+
+  if (input.curator_id) {
+    try {
+      await subscribeCuratorToSpace(input.curator_id, notification_space);
+    } catch {
+      // Subscription is best-effort; do not fail blog creation.
+    }
+  }
+
   return inserted[0];
+}
+
+export interface SubscribeBlogRssInput {
+  name: string;
+  feed_url: string;
+  notification_space: string;
+  title?: string | null;
+  description?: string | null;
+  curator_id?: string | null;
+}
+
+interface RssItem {
+  title: string;
+  link: string;
+  description?: string;
+  content?: string;
+  guid?: string;
+  pubDate?: string;
+}
+
+function stripCdata(str: string): string {
+  return str.replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1');
+}
+
+function getTagContent(xml: string, tag: string): string | undefined {
+  const regex = new RegExp(`<${tag}(?:\\s[^>]*)?>(.*?)</${tag}>`, 'is');
+  const match = xml.match(regex);
+  return match ? stripCdata(match[1]).trim() : undefined;
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseRssItems(xml: string): RssItem[] {
+  const items: RssItem[] = [];
+  const matches = xml.match(/<item\b[^>]*>(.*?)<\/item>/gis) || [];
+  for (const itemXml of matches) {
+    const title = getTagContent(itemXml, 'title');
+    const link = getTagContent(itemXml, 'link');
+    const description = getTagContent(itemXml, 'description');
+    const contentEncoded = getTagContent(itemXml, 'content:encoded');
+    const guid = getTagContent(itemXml, 'guid');
+    const pubDate = getTagContent(itemXml, 'pubDate') || getTagContent(itemXml, 'dc:date');
+    if (!title) continue;
+    const safeTitle = htmlToPlainText(title);
+    items.push({
+      title: safeTitle,
+      link: link || guid || '',
+      description: description ? htmlToPlainText(description) : undefined,
+      content: contentEncoded ? htmlToPlainText(contentEncoded) : (description ? htmlToPlainText(description) : undefined),
+      guid: guid || link,
+      pubDate,
+    });
+  }
+  return items;
+}
+
+function parseAtomEntries(xml: string): RssItem[] {
+  const entries: RssItem[] = [];
+  const matches = xml.match(/<entry\b[^>]*>(.*?)<\/entry>/gis) || [];
+  for (const entryXml of matches) {
+    const title = getTagContent(entryXml, 'title');
+    const linkMatch = entryXml.match(/<link[^>]+href="([^"]+)"[^>]*>/i);
+    const link = linkMatch ? linkMatch[1] : undefined;
+    const summary = getTagContent(entryXml, 'summary');
+    const content = getTagContent(entryXml, 'content');
+    const id = getTagContent(entryXml, 'id');
+    const published = getTagContent(entryXml, 'published') || getTagContent(entryXml, 'updated');
+    if (!title) continue;
+    entries.push({
+      title: htmlToPlainText(title),
+      link: link || id || '',
+      description: summary ? htmlToPlainText(summary) : undefined,
+      content: content ? htmlToPlainText(content) : (summary ? htmlToPlainText(summary) : undefined),
+      guid: id || link,
+      pubDate: published,
+    });
+  }
+  return entries;
+}
+
+function parseFeed(xml: string): RssItem[] {
+  if (/<feed\b/i.test(xml)) return parseAtomEntries(xml);
+  return parseRssItems(xml);
+}
+
+export async function subscribeBlogToRss(
+  input: SubscribeBlogRssInput
+): Promise<{ blog: BlogRecord; imported: number }> {
+  const { name, feed_url, notification_space } = input;
+  if (!validateBlogName(name)) throw new Error('Invalid blog name');
+  if (!validateSpaceName(notification_space)) throw new Error('Invalid notification space name');
+  if (!feed_url || !/^https?:\/\/.+/.test(feed_url)) throw new Error('Invalid feed URL');
+
+  const response = await fetch(feed_url, {
+    headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' },
+  });
+  if (!response.ok) throw new Error(`Could not fetch feed: ${response.status}`);
+  const xml = await response.text();
+  if (!xml.trim()) throw new Error('Empty feed');
+
+  const items = parseFeed(xml);
+  if (items.length === 0) throw new Error('No items found in feed');
+
+  await ensureSchema();
+  const pool = getPool();
+
+  const blog = await getOrCreateBlog({
+    name,
+    notification_space,
+    title: input.title,
+    description: input.description,
+    curator_id: input.curator_id,
+  });
+
+  if (input.curator_id) {
+    try {
+      await subscribeCuratorToSpace(input.curator_id, notification_space);
+    } catch {
+      // Best-effort subscription; the RSS import already succeeded.
+    }
+  }
+
+  await pool.sql`UPDATE blogs SET feed_url = ${feed_url}, last_fetched_at = NOW() WHERE name = ${blog.name}`;
+
+  let imported = 0;
+  for (const item of items) {
+    const safeTitle = sanitizeInput(item.title, MAX_TITLE_LENGTH);
+    const rawContent = item.content || item.description || '';
+    const plainContent = htmlToPlainText(rawContent);
+    const content = plainContent + (item.link ? `\n\n[Read more](${item.link})` : '');
+    if (!plainContent && !item.link) continue;
+
+    const safeContent = sanitizeInput(content, MAX_CONTENT_LENGTH);
+    const safeGuid = sanitizeInput((item.guid || item.link || '') + '', 512);
+    const safeLink = sanitizeInput(item.link || '', 512);
+    const pubDate = item.pubDate ? new Date(item.pubDate) : new Date();
+    const createdAt = isNaN(pubDate.getTime()) ? new Date().toISOString() : pubDate.toISOString();
+
+    const { rows: existing } = await pool.sql<{ id: number }>`
+      SELECT id FROM blog_posts WHERE blog_name = ${blog.name} AND rss_guid = ${safeGuid} LIMIT 1
+    `;
+    if (existing[0]) continue;
+
+    await pool.sql`
+      INSERT INTO blog_posts (blog_name, title, author, content, curator_id, rss_guid, rss_link, created_at)
+      VALUES (${blog.name}, ${safeTitle}, 'RSS', ${safeContent}, ${input.curator_id ?? null}, ${safeGuid}, ${safeLink}, ${createdAt})
+    `;
+    imported += 1;
+  }
+
+  await pool.sql`UPDATE blogs SET updated_at = NOW() WHERE name = ${blog.name}`;
+  return { blog: { ...blog, feed_url, last_fetched_at: new Date().toISOString() }, imported };
 }
 
 export async function getBlogPosts(name: string, beforeId?: number, limit = DEFAULT_PAGE_SIZE): Promise<BlogPostRecord[]> {

@@ -5,8 +5,8 @@
 :root {
   --zen-paper: #f2f0e3;
   --zen-dark: #2e2e2e;
-  --zen-muted: #0000000d;
-  --zen-subtle: #0000000d;
+  --zen-muted: color-mix(in srgb, var(--zen-dark) 6%, var(--zen-paper));
+  --zen-subtle: color-mix(in srgb, var(--zen-dark) 12%, var(--zen-paper));
 
   --color-background: var(--zen-paper);
   --color-surface: var(--zen-muted);
@@ -18,8 +18,8 @@
 :root[data-theme="dark"] {
   --zen-paper: #1f1f1f;
   --zen-dark: #d1cfc0;
-  --zen-muted: #ffffff0d;
-  --zen-subtle: #ffffff1a;
+  --zen-muted: color-mix(in srgb, var(--zen-dark) 8%, var(--zen-paper));
+  --zen-subtle: color-mix(in srgb, var(--zen-dark) 14%, var(--zen-paper));
 
   --color-background: var(--zen-paper);
   --color-surface: var(--zen-muted);

@@ -8,7 +8,12 @@ import {
   type ForumReportRecord,
   type CuratorRecord,
 } from './db';
-import { getOrCreateSpace, publishToSpace, validateSpaceName } from './spaces';
+import {
+  getOrCreateSpace,
+  publishToSpace,
+  validateSpaceName,
+  subscribeCuratorToSpace,
+} from './spaces';
 
 const FORUM_NAME_RE = /^[a-zA-Z0-9_-]{3,64}$/;
 const MAX_TITLE_LENGTH = 200;
@@ -103,6 +108,15 @@ export async function getOrCreateForum(input: CreateForumInput): Promise<ForumRe
     RETURNING *
   `;
   if (!inserted[0]) throw new Error('Could not create forum');
+
+  if (input.curator_id) {
+    try {
+      await subscribeCuratorToSpace(input.curator_id, safeNotificationSpace);
+    } catch {
+      // Subscription is best-effort; do not fail forum creation.
+    }
+  }
+
   return inserted[0];
 }
 
